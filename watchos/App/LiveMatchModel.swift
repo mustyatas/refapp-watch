@@ -24,6 +24,7 @@ final class LiveMatchModel {
 
     func toggleClock(at date: Date) {
         let clock = clock(at: date)
+        guard !clock.isFinished, clock.period != .halfTime, clock.period != .extraTimeBreak else { return }
         let payload: MatchEventPayload
         if events.isEmpty { payload = .periodStarted(.firstHalf) }
         else { payload = clock.isRunning ? .clockPaused(reason: nil) : .clockResumed }
@@ -31,6 +32,49 @@ final class LiveMatchModel {
     }
 
     func addGoal(side: MatchSide, at date: Date) { append(.goal(side: side, scorer: nil), at: date) }
+
+    func addCard(_ card: CardKind, side: MatchSide, person: PersonReference, at date: Date) {
+        append(.card(card, side: side, person: person, reason: nil), at: date)
+    }
+
+    func addSubstitution(side: MatchSide, playerOut: Int, playerIn: Int, at date: Date) {
+        append(
+            .substitution(
+                side: side,
+                playerOut: PersonReference(number: playerOut, role: .player),
+                playerIn: PersonReference(number: playerIn, role: .player)
+            ),
+            at: date
+        )
+    }
+
+    func advancePeriod(at date: Date) {
+        let state = clock(at: date)
+        let payload: MatchEventPayload
+        switch state.period {
+        case .firstHalf: payload = .periodEnded(.firstHalf)
+        case .halfTime: payload = .periodStarted(.secondHalf)
+        case .secondHalf: payload = .periodEnded(.secondHalf)
+        case .extraTimeFirst: payload = .periodEnded(.extraTimeFirst)
+        case .extraTimeBreak: payload = .periodStarted(.extraTimeSecond)
+        case .extraTimeSecond: payload = .periodEnded(.extraTimeSecond)
+        case .penalties: payload = .periodEnded(.penalties)
+        }
+        append(payload, at: date)
+    }
+
+    func periodActionLabel(at date: Date) -> String {
+        let state = clock(at: date)
+        switch state.period {
+        case .firstHalf: "İlk yarıyı bitir"
+        case .halfTime: "İkinci yarıyı başlat"
+        case .secondHalf: format == .regulation ? "Maçı bitir" : "Normal süreyi bitir"
+        case .extraTimeFirst: "Uzatma ilk devreyi bitir"
+        case .extraTimeBreak: "Uzatma ikinci devreyi başlat"
+        case .extraTimeSecond: format == .penalties ? "Penaltılara geç" : "Maçı bitir"
+        case .penalties: "Maçı bitir"
+        }
+    }
 
     func undoLast(at date: Date) {
         guard let target = MatchEngine.activeEvents(events).last(where: { event in
