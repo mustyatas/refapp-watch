@@ -15,6 +15,7 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
     private let decoder: JSONDecoder
     private var eventProvider: () -> [MatchEvent] = { [] }
     private var incomingEventsHandler: ([MatchEvent]) -> Void = { _ in }
+    private var matchPackageHandler: (WatchMatchPackage) -> Void = { _ in }
     private var statusHandler: (Int) -> Void = { _ in }
     private var lastQueuedFingerprint: String?
 
@@ -30,10 +31,12 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
     func configure(
         eventProvider: @escaping () -> [MatchEvent],
         incomingEventsHandler: @escaping ([MatchEvent]) -> Void,
+        matchPackageHandler: @escaping (WatchMatchPackage) -> Void,
         statusHandler: @escaping (Int) -> Void
     ) {
         self.eventProvider = eventProvider
         self.incomingEventsHandler = incomingEventsHandler
+        self.matchPackageHandler = matchPackageHandler
         self.statusHandler = statusHandler
     }
 
@@ -110,6 +113,11 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
                   batch.schemaVersion == EventBatch.currentSchemaVersion else { return }
             incomingEventsHandler(batch.events)
             sendAcknowledgement(for: batch)
+
+        case .matchPackage:
+            guard let package = try? decoder.decode(WatchMatchPackage.self, from: payload),
+                  package.schemaVersion == WatchMatchPackage.currentSchemaVersion else { return }
+            matchPackageHandler(package)
 
         case nil:
             return

@@ -8,9 +8,10 @@ final class LiveMatchModel {
     private(set) var events: [MatchEvent] = []
     private(set) var errorMessage: String?
     private(set) var pendingSyncCount = 0
-    let matchID = LiveMatchModel.persistentUUID(forKey: "refapp.watch.active-match-id")
+    private(set) var matchPackage: WatchMatchPackage?
+    private(set) var matchID = LiveMatchModel.persistentUUID(forKey: "refapp.watch.active-match-id")
     let deviceID = LiveMatchModel.persistentDeviceID()
-    let format: MatchFormat = .regulation
+    private(set) var format: MatchFormat = .regulation
 
     private let store: EventStore
     private let syncCoordinator: WatchSyncCoordinator
@@ -22,14 +23,34 @@ final class LiveMatchModel {
         syncCoordinator.configure(
             eventProvider: { [weak self] in self?.events ?? [] },
             incomingEventsHandler: { [weak self] incoming in self?.mergeIncoming(incoming) },
+            matchPackageHandler: { [weak self] package in self?.acceptMatchPackage(package) },
             statusHandler: { [weak self] count in self?.pendingSyncCount = count }
         )
         syncCoordinator.start()
+        restoreMatchPackage()
         Task { await restore() }
     }
 
     func clock(at date: Date) -> MatchClockState { MatchEngine.clock(from: events, format: format, now: date) }
     var score: MatchScore { MatchEngine.score(from: events) }
+
+    func teamLabel(_ side: MatchSide) -> String {
+        let name = side == .home
+            ? matchPackage?.match.homeTeamName
+            : matchPackage?.match.awayTeamName
+        return name?.isEmpty == false ? String(name!.prefix(8)).uppercased() : side == .home ? "EV" : "DEP"
+    }
+
+    func playerNumbers(for side: MatchSide) -> [Int] {
+        let numbers = matchPackage?.roster
+            .filter { $0.side == side }
+            .compactMap(\.number) ?? []
+        return numbers.isEmpty ? Array(1...99) : Array(Set(numbers)).sorted()
+    }
+
+    func staffMembers(for side: MatchSide) -> [WatchStaffMember] {
+        matchPackage?.staff.filter { $0.side == side } ?? []
+    }
 
     func toggleClock(at date: Date) {
         let clock = clock(at: date)
@@ -123,6 +144,37 @@ final class LiveMatchModel {
                 errorMessage = "Eşitleme kaydı açılamadı"
             }
         }
+    }
+
+    private func acceptMatchPackage(_ package: WatchMatchPackage) {
+        let incomingMatchID = UUID(uuidString: package.match.id)
+        let isNewMatch = incomingMatchID != nil && incomingMatchID != matchID
+        matchPackage = package
+        format = package.match.format
+        if let incomingMatchID {
+            matchID = incomingMatchID
+            UserDefaults.standard.set(incomingMatchID.uuidString, forKey: "refapp.watch.active-match-id")
+        }
+        if let data = try? JSONEncoder().encode(package) {
+            UserDefaults.standard.set(data, forKey: "refapp.watch.active-match-package")
+        }
+        guard isNewMatch else { return }
+        Task {
+            do {
+                events = try await store.replace(with: [])
+                syncCoordinator.eventsDidChange()
+                WKInterfaceDevice.current().play(.success)
+            } catch {
+                errorMessage = "Yeni maç açılamadı"
+            }
+        }
+    }
+
+    private func restoreMatchPackage() {
+        guard let data = UserDefaults.standard.data(forKey: "refapp.watch.active-match-package"),
+              let package = try? JSONDecoder().decode(WatchMatchPackage.self, from: data) else { return }
+        matchPackage = package
+        format = package.match.format
     }
 
     private static func persistentDeviceID() -> String {

@@ -3,6 +3,39 @@ import Foundation
 public enum SyncMessageKind: String, Codable, Sendable {
     case eventBatch = "event_batch"
     case acknowledgement
+    case matchPackage = "match_package"
+}
+
+public struct WatchMatch: Codable, Equatable, Sendable {
+    public let id: String
+    public let homeTeamName: String
+    public let awayTeamName: String
+    public let format: MatchFormat
+    public let scheduledAt: String
+}
+
+public struct WatchRosterPlayer: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let side: MatchSide
+    public let name: String
+    public let number: Int?
+    public let isStarter: Bool
+}
+
+public struct WatchStaffMember: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let side: MatchSide
+    public let name: String
+    public let role: String?
+}
+
+public struct WatchMatchPackage: Codable, Equatable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let match: WatchMatch
+    public let roster: [WatchRosterPlayer]
+    public let staff: [WatchStaffMember]
 }
 
 public struct EventBatch: Codable, Equatable, Sendable {

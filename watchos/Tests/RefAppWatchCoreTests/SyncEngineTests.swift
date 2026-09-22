@@ -53,3 +53,38 @@ private func syncEvent(id: UUID = UUID(), seconds: TimeInterval) -> MatchEvent {
 
     #expect(decoded == batch)
 }
+
+@Test func matchPackageRoundTripsWithRosterAndStaff() throws {
+    let package = WatchMatchPackage(
+        schemaVersion: 1,
+        match: WatchMatch(
+            id: syncMatchID.uuidString,
+            homeTeamName: "Ev Spor",
+            awayTeamName: "Deplasman Spor",
+            format: .penalties,
+            scheduledAt: "2026-09-22T18:00:00Z"
+        ),
+        roster: [
+            WatchRosterPlayer(
+                id: "player-1",
+                side: .home,
+                name: "Oyuncu Bir",
+                number: 9,
+                isStarter: true
+            ),
+        ],
+        staff: [
+            WatchStaffMember(
+                id: "staff-1",
+                side: .away,
+                name: "Teknik Sorumlu",
+                role: "Teknik direktör"
+            ),
+        ]
+    )
+
+    let data = try JSONEncoder().encode(package)
+    let decoded = try JSONDecoder().decode(WatchMatchPackage.self, from: data)
+
+    #expect(decoded == package)
+}

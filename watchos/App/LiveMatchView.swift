@@ -22,10 +22,10 @@ struct LiveMatchView: View {
                     clockText(clock.displayTime)
 
                     HStack(spacing: 8) {
-                        score("EV", value: model.score.home)
+                        score(model.teamLabel(.home), value: model.score.home)
                         Text("–")
                             .foregroundStyle(.secondary)
-                        score("DEP", value: model.score.away)
+                        score(model.teamLabel(.away), value: model.score.away)
                     }
 
                     LazyVGrid(

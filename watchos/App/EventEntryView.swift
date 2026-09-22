@@ -22,20 +22,21 @@ struct EventEntryView: View {
     @State private var number = 1
     @State private var playerOut = 1
     @State private var playerIn = 2
+    @State private var staffName = "Teknik ekip"
 
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
                 Text(title).font(.headline)
                 if side == nil {
-                    Button("Ev sahibi") { side = .home }
-                    Button("Deplasman") { side = .away }
+                    Button(model.teamLabel(.home)) { selectSide(.home) }
+                    Button(model.teamLabel(.away)) { selectSide(.away) }
                 } else if pending.action == .goal {
                     Text("Gol seçilen takıma yazılacak.").font(.caption).foregroundStyle(.secondary)
                     saveButton("Golü kaydet") { model.addGoal(side: side!, at: pending.occurredAt) }
                 } else if pending.action == .substitution {
-                    numberPicker("Çıkan", selection: $playerOut)
-                    numberPicker("Giren", selection: $playerIn)
+                    numberPicker("Çıkan", selection: $playerOut, values: playerNumbers)
+                    numberPicker("Giren", selection: $playerIn, values: playerNumbers)
                     saveButton("Değişikliği kaydet", disabled: playerOut == playerIn) {
                         model.addSubstitution(side: side!, playerOut: playerOut, playerIn: playerIn, at: pending.occurredAt)
                     }
@@ -45,11 +46,20 @@ struct EventEntryView: View {
                         Text("Teknik ekip").tag(PersonRole.staff)
                     }
                     .pickerStyle(.navigationLink)
-                    if role == .player { numberPicker("Forma", selection: $number) }
+                    if role == .player {
+                        numberPicker("Forma", selection: $number, values: playerNumbers)
+                    } else if !staffMembers.isEmpty {
+                        Picker("Teknik ekip", selection: $staffName) {
+                            ForEach(staffMembers) { member in
+                                Text(member.name).tag(member.name)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                    }
                     saveButton("Kartı kaydet") {
                         let person = role == .player
                             ? PersonReference(number: number, role: .player)
-                            : PersonReference(name: "Teknik ekip", role: .staff)
+                            : PersonReference(name: staffName, role: .staff)
                         model.addCard(cardKind, side: side!, person: person, at: pending.occurredAt)
                     }
                 }
@@ -70,9 +80,28 @@ struct EventEntryView: View {
 
     private var cardKind: CardKind { pending.action == .redCard ? .red : .yellow }
 
-    private func numberPicker(_ label: String, selection: Binding<Int>) -> some View {
+    private var playerNumbers: [Int] {
+        guard let side else { return Array(1...99) }
+        return model.playerNumbers(for: side)
+    }
+
+    private var staffMembers: [WatchStaffMember] {
+        guard let side else { return [] }
+        return model.staffMembers(for: side)
+    }
+
+    private func selectSide(_ selectedSide: MatchSide) {
+        side = selectedSide
+        let numbers = model.playerNumbers(for: selectedSide)
+        number = numbers.first ?? 1
+        playerOut = numbers.first ?? 1
+        playerIn = numbers.dropFirst().first ?? numbers.first ?? 2
+        staffName = model.staffMembers(for: selectedSide).first?.name ?? "Teknik ekip"
+    }
+
+    private func numberPicker(_ label: String, selection: Binding<Int>, values: [Int]) -> some View {
         Picker(label, selection: selection) {
-            ForEach(1...99, id: \.self) { Text("#\($0)").tag($0) }
+            ForEach(values, id: \.self) { Text("#\($0)").tag($0) }
         }
         .pickerStyle(.wheel)
         .frame(height: 72)

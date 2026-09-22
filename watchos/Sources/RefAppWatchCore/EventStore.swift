@@ -30,6 +30,11 @@ public actor EventStore {
         try save(SyncEngine.merge(local: load(), incoming: incoming))
     }
 
+    @discardableResult
+    public func replace(with events: [MatchEvent]) throws -> [MatchEvent] {
+        try save(events)
+    }
+
     private func save(_ events: [MatchEvent]) throws -> [MatchEvent] {
         let data = try encoder.encode(events)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
