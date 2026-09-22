@@ -65,7 +65,7 @@ final class LiveMatchModel {
 
     func periodActionLabel(at date: Date) -> String {
         let state = clock(at: date)
-        switch state.period {
+        return switch state.period {
         case .firstHalf: "İlk yarıyı bitir"
         case .halfTime: "İkinci yarıyı başlat"
         case .secondHalf: format == .regulation ? "Maçı bitir" : "Normal süreyi bitir"
