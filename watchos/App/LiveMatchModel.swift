@@ -7,15 +7,24 @@ import RefAppWatchCore
 final class LiveMatchModel {
     private(set) var events: [MatchEvent] = []
     private(set) var errorMessage: String?
+    private(set) var pendingSyncCount = 0
     let matchID = LiveMatchModel.persistentUUID(forKey: "refapp.watch.active-match-id")
     let deviceID = LiveMatchModel.persistentDeviceID()
     let format: MatchFormat = .regulation
 
     private let store: EventStore
+    private let syncCoordinator: WatchSyncCoordinator
 
     init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         store = EventStore(fileURL: base.appendingPathComponent("active-match-events.json"))
+        syncCoordinator = WatchSyncCoordinator()
+        syncCoordinator.configure(
+            eventProvider: { [weak self] in self?.events ?? [] },
+            incomingEventsHandler: { [weak self] incoming in self?.mergeIncoming(incoming) },
+            statusHandler: { [weak self] count in self?.pendingSyncCount = count }
+        )
+        syncCoordinator.start()
         Task { await restore() }
     }
 
@@ -88,6 +97,7 @@ final class LiveMatchModel {
         Task {
             do {
                 events = try await store.append(event)
+                syncCoordinator.eventsDidChange()
                 WKInterfaceDevice.current().play(.success)
             } catch {
                 errorMessage = "Kayıt yapılamadı"
@@ -97,8 +107,22 @@ final class LiveMatchModel {
     }
 
     private func restore() async {
-        do { events = try await store.load() }
+        do {
+            events = try await store.load()
+            syncCoordinator.eventsDidChange()
+        }
         catch { errorMessage = "Maç kaydı açılamadı" }
+    }
+
+    private func mergeIncoming(_ incoming: [MatchEvent]) {
+        Task {
+            do {
+                events = try await store.merge(incoming)
+                syncCoordinator.eventsDidChange()
+            } catch {
+                errorMessage = "Eşitleme kaydı açılamadı"
+            }
+        }
     }
 
     private static func persistentDeviceID() -> String {

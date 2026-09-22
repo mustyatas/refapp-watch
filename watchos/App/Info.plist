@@ -6,5 +6,7 @@
     <string>RefApp</string>
     <key>WKApplication</key>
     <true/>
+    <key>WKCompanionAppBundleIdentifier</key>
+    <string>com.refapp.referee</string>
 </dict>
 </plist>

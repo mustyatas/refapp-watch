@@ -22,6 +22,15 @@ public actor EventStore {
     public func append(_ event: MatchEvent) throws -> [MatchEvent] {
         var events = try load()
         if !events.contains(where: { $0.id == event.id }) { events.append(event) }
+        return try save(events)
+    }
+
+    @discardableResult
+    public func merge(_ incoming: [MatchEvent]) throws -> [MatchEvent] {
+        try save(SyncEngine.merge(local: load(), incoming: incoming))
+    }
+
+    private func save(_ events: [MatchEvent]) throws -> [MatchEvent] {
         let data = try encoder.encode(events)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtection])

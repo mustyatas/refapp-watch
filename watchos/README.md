@@ -10,12 +10,19 @@ the complete match without the phone or internet.
 - Clock derived from persisted timestamps instead of UI timer ticks
 - Score derived from events with duplicate-event protection
 - Atomic local event-file writes
-- Initial Turkish SwiftUI screen for clock, score, goal entry and undo
+- Turkish SwiftUI controls for goals, cards, technical staff and substitutions
+- Period controls and append-only undo
+- Durable Watch Connectivity event batches with acknowledgement-based retry
+- Pending phone-transfer count on the match screen
 - macOS CI definition for Swift tests and a watchOS Simulator build
 
-The current screen is a foundation build, not a field-ready release. Cards,
-substitutions, technical staff, period confirmation, Watch Connectivity, workout
-runtime and TestFlight signing are still required.
+The current screen is a foundation build, not a field-ready release. Match and
+roster import from the phone, workout runtime, the iOS receiver and TestFlight
+signing are still required.
+
+Watch Connectivity background delivery must be tested on a paired physical iPhone
+and Apple Watch. The simulator build verifies compilation but does not exercise
+`transferUserInfo` delivery.
 
 ## Build on a Mac or macOS CI runner
 

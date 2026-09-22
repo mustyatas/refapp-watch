@@ -54,6 +54,12 @@ struct LiveMatchView: View {
                     .buttonStyle(.bordered)
                     .disabled(!hasUndoableEvent)
 
+                    if model.pendingSyncCount > 0 {
+                        Text("Telefona aktarılacak: \(model.pendingSyncCount)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
                     if let message = model.errorMessage {
                         Text(message)
                             .font(.caption2)
