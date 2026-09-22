@@ -1,0 +1,35 @@
+name: watchOS checks
+
+on:
+  pull_request:
+    paths: ["watchos/**", ".github/workflows/watchos.yml"]
+  push:
+    branches: ["main"]
+    paths: ["watchos/**", ".github/workflows/watchos.yml"]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: watchos
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report Xcode version
+        run: xcodebuild -version
+      - name: Test match engine
+        run: swift test
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build for watchOS Simulator
+        run: >-
+          xcodebuild
+          -project RefAppWatch.xcodeproj
+          -scheme RefAppWatch
+          -sdk watchsimulator
+          -destination 'generic/platform=watchOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build
