@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: watchos
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Report Xcode version
         run: xcodebuild -version
       - name: Test match engine
