@@ -51,16 +51,18 @@ public enum MatchEngine {
         var finished = false
         var startedAt: Date?
         var endedAt: Date?
+        var lastEndedPeriod: MatchPeriod?
         var pausedAt: Date?
         var stoppage: TimeInterval = 0
 
         for event in activeEvents(events) {
             switch event.payload {
             case .periodStarted(let nextPeriod):
-                period = nextPeriod; startedAt = event.occurredAt; endedAt = nil; pausedAt = nil; stoppage = 0
+                period = nextPeriod; startedAt = event.occurredAt; endedAt = nil; lastEndedPeriod = nil; pausedAt = nil; stoppage = 0
             case .periodEnded(let endedPeriod):
                 if let pause = pausedAt { stoppage += max(0, event.occurredAt.timeIntervalSince(pause)); pausedAt = nil }
                 endedAt = event.occurredAt
+                lastEndedPeriod = endedPeriod
                 if let next = nextPeriod(after: endedPeriod, format: format) { period = next } else { finished = true }
             case .clockPaused:
                 if startedAt != nil, endedAt == nil, pausedAt == nil { pausedAt = event.occurredAt }
@@ -72,7 +74,11 @@ public enum MatchEngine {
 
         let offset = periodOffset(period)
         guard let start = startedAt else { return .init(period: period, isRunning: false, isFinished: finished, elapsedInPeriod: 0, displayTime: offset, stoppage: stoppage) }
-        if endedAt != nil { return .init(period: period, isRunning: false, isFinished: finished, elapsedInPeriod: 0, displayTime: offset, stoppage: 0) }
+        if let endedAt, let endedPeriod = lastEndedPeriod {
+            let elapsed = max(0, endedAt.timeIntervalSince(start) - stoppage)
+            let displayTime = max(periodOffset(endedPeriod) + elapsed, periodBoundary(endedPeriod))
+            return .init(period: period, isRunning: false, isFinished: finished, elapsedInPeriod: elapsed, displayTime: displayTime, stoppage: stoppage)
+        }
         let openPause = pausedAt.map { max(0, now.timeIntervalSince($0)) } ?? 0
         let totalStoppage = stoppage + openPause
         let elapsed = max(0, now.timeIntervalSince(start) - totalStoppage)
@@ -86,6 +92,15 @@ public enum MatchEngine {
         case .extraTimeFirst, .extraTimeBreak: 90 * 60
         case .extraTimeSecond: 105 * 60
         case .penalties: 120 * 60
+        }
+    }
+
+    private static func periodBoundary(_ period: MatchPeriod) -> TimeInterval {
+        switch period {
+        case .firstHalf, .halfTime: 45 * 60
+        case .secondHalf: 90 * 60
+        case .extraTimeFirst, .extraTimeBreak: 105 * 60
+        case .extraTimeSecond, .penalties: 120 * 60
         }
     }
 

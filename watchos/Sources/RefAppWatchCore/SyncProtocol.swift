@@ -12,6 +12,26 @@ public struct WatchMatch: Codable, Equatable, Sendable {
     public let awayTeamName: String
     public let format: MatchFormat
     public let scheduledAt: String
+    public let homeColor: String?
+    public let awayColor: String?
+
+    public init(
+        id: String,
+        homeTeamName: String,
+        awayTeamName: String,
+        format: MatchFormat,
+        scheduledAt: String,
+        homeColor: String? = nil,
+        awayColor: String? = nil
+    ) {
+        self.id = id
+        self.homeTeamName = homeTeamName
+        self.awayTeamName = awayTeamName
+        self.format = format
+        self.scheduledAt = scheduledAt
+        self.homeColor = homeColor
+        self.awayColor = awayColor
+    }
 }
 
 public struct WatchRosterPlayer: Codable, Equatable, Sendable, Identifiable {

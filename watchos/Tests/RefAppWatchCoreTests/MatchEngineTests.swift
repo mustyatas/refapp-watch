@@ -10,6 +10,23 @@ private func event(_ payload: MatchEventPayload, seconds: TimeInterval, id: UUID
     MatchEvent(id: id, matchID: matchID, occurredAt: kickoff.addingTimeInterval(seconds), deviceID: deviceID, payload: payload)
 }
 
+@Test func completedPeriodsSnapToOfficialBoundaryInDemoMode() {
+    let halfTime = MatchEngine.clock(from: [
+        event(.periodStarted(.firstHalf), seconds: 0),
+        event(.periodEnded(.firstHalf), seconds: 5),
+    ], format: .regulation, now: kickoff.addingTimeInterval(5))
+    #expect(halfTime.displayTime == 45 * 60)
+
+    let fullTime = MatchEngine.clock(from: [
+        event(.periodStarted(.firstHalf), seconds: 0),
+        event(.periodEnded(.firstHalf), seconds: 5),
+        event(.periodStarted(.secondHalf), seconds: 6),
+        event(.periodEnded(.secondHalf), seconds: 11),
+    ], format: .regulation, now: kickoff.addingTimeInterval(11))
+    #expect(fullTime.displayTime == 90 * 60)
+    #expect(fullTime.isFinished)
+}
+
 @Test func clockSurvivesProcessTermination() {
     let events = [event(.periodStarted(.firstHalf), seconds: 0)]
     let state = MatchEngine.clock(from: events, format: .regulation, now: kickoff.addingTimeInterval(44 * 60))

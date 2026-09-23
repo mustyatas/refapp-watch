@@ -10,6 +10,13 @@ struct PendingFieldAction: Identifiable {
     let id = UUID()
     let action: FieldAction
     let occurredAt: Date
+    let side: MatchSide?
+
+    init(action: FieldAction, occurredAt: Date, side: MatchSide? = nil) {
+        self.action = action
+        self.occurredAt = occurredAt
+        self.side = side
+    }
 }
 
 struct EventEntryView: View {
@@ -19,70 +26,282 @@ struct EventEntryView: View {
 
     @State private var side: MatchSide?
     @State private var role: PersonRole = .player
-    @State private var number = 1
-    @State private var playerOut = 1
-    @State private var playerIn = 2
-    @State private var staffName = "Teknik ekip"
+    @State private var selectedPlayerID = ""
+    @State private var playerOutID = ""
+    @State private var playerInID = ""
+    @State private var staffName = ""
+    @State private var manualPerson = false
+    @State private var manualName = ""
+    @State private var manualNumber = ""
+    @State private var manualOut = ""
+    @State private var manualIn = ""
+    @State private var cardReason = ""
+    @State private var confirmSecondYellow = false
+
+    private var actionColor: Color {
+        switch pending.action {
+        case .goal: return .green
+        case .yellowCard: return .yellow
+        case .redCard: return .red
+        case .substitution: return .blue
+        }
+    }
+
+    private var actionIcon: String {
+        switch pending.action {
+        case .goal: return "soccerball"
+        case .yellowCard, .redCard: return "rectangle.portrait.fill"
+        case .substitution: return "arrow.left.arrow.right"
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
-                Text(title).font(.headline)
+            VStack(spacing: 8) {
+                // Başlık & Takım Rozeti
+                headerBar
+
                 if side == nil {
-                    Button(model.teamLabel(.home)) { selectSide(.home) }
-                    Button(model.teamLabel(.away)) { selectSide(.away) }
-                } else if pending.action == .goal {
-                    Text("Gol seçilen takıma yazılacak.").font(.caption).foregroundStyle(.secondary)
-                    saveButton("Golü kaydet") { model.addGoal(side: side!, at: pending.occurredAt) }
+                    teamSelection
                 } else if pending.action == .substitution {
-                    numberPicker("Çıkan", selection: $playerOut, values: playerNumbers)
-                    numberPicker("Giren", selection: $playerIn, values: playerNumbers)
-                    saveButton("Değişikliği kaydet", disabled: playerOut == playerIn) {
-                        model.addSubstitution(side: side!, playerOut: playerOut, playerIn: playerIn, at: pending.occurredAt)
-                    }
+                    substitutionForm
                 } else {
-                    Picker("Kişi", selection: $role) {
-                        Text("Oyuncu").tag(PersonRole.player)
-                        Text("Teknik ekip").tag(PersonRole.staff)
+                    personForm
+                    if isCard {
+                        reasonPicker
+                    }
+                    saveButton
+                }
+
+                Button("Vazgeç", role: .cancel, action: dismiss)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+            }
+            .padding(.horizontal, 6)
+        }
+        .confirmationDialog(
+            "Bu kişinin ikinci sarı kartı",
+            isPresented: $confirmSecondYellow,
+            titleVisibility: .visible
+        ) {
+            Button("Sarı + Kırmızı Kaydet", role: .destructive) {
+                guard let side, let person = selectedPerson else { return }
+                model.addCard(.yellow, side: side, person: person, reason: cardReason, at: pending.occurredAt)
+                model.addCard(.red, side: side, person: person, reason: "İkinci sarı kart", at: pending.occurredAt)
+                dismiss()
+            }
+            Button("Yalnız Sarı Kaydet") {
+                commitCard()
+            }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("İkinci ihtar oyundan ihraç (kırmızı kart) gerektirir.")
+        }
+        .onAppear {
+            if let selected = pending.side, side == nil {
+                selectSide(selected)
+            }
+            if isCard, cardReason.isEmpty {
+                cardReason = reasons.first ?? ""
+            }
+        }
+        .onChange(of: role) { _, _ in
+            cardReason = reasons.first ?? ""
+        }
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 5) {
+            Image(systemName: actionIcon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(actionColor)
+
+            Text(title)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            if let side {
+                let tint = Color(hex: model.teamColor(side)) ?? (side == .home ? .blue : .cyan)
+                Text(model.teamLabel(side))
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(tint.opacity(0.80))
+                    )
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var personForm: some View {
+        VStack(spacing: 6) {
+            if isCard {
+                Picker("Kişi", selection: $role) {
+                    Text("Oyuncu").tag(PersonRole.player)
+                    Text("Teknik Ekip").tag(PersonRole.staff)
+                }
+                .pickerStyle(.navigationLink)
+            }
+
+            Toggle("Manuel Giriş", isOn: $manualPerson)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .padding(.horizontal, 4)
+
+            if manualPerson {
+                TextField(role == .staff ? "Ad Soyad / Görev" : "Oyuncu Adı", text: $manualName)
+                if role == .player {
+                    TextField("Forma No (İsteğe bağlı)", text: $manualNumber)
+                }
+            } else if role == .staff {
+                if staffMembers.isEmpty {
+                    Text("Kayıtlı teknik ekip yok. Manuel girişi açın.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Teknik Ekip", selection: $staffName) {
+                        ForEach(staffMembers) { member in
+                            Text(member.name).tag(member.name)
+                        }
                     }
                     .pickerStyle(.navigationLink)
-                    if role == .player {
-                        numberPicker("Forma", selection: $number, values: playerNumbers)
-                    } else if !staffMembers.isEmpty {
-                        Picker("Teknik ekip", selection: $staffName) {
-                            ForEach(staffMembers) { member in
-                                Text(member.name).tag(member.name)
-                            }
-                        }
-                        .pickerStyle(.navigationLink)
-                    }
-                    saveButton("Kartı kaydet") {
-                        let person = role == .player
-                            ? PersonReference(number: number, role: .player)
-                            : PersonReference(name: staffName, role: .staff)
-                        model.addCard(cardKind, side: side!, person: person, at: pending.occurredAt)
-                    }
                 }
-                Button("Vazgeç", role: .cancel, action: dismiss)
+            } else {
+                playerPicker(pending.action == .goal ? "Golü Atan" : "Oyuncu", selection: $selectedPlayerID)
             }
-            .padding(.horizontal, 8)
         }
     }
 
-    private var title: String {
-        switch pending.action {
-        case .goal: "Gol"
-        case .yellowCard: "Sarı kart"
-        case .redCard: "Kırmızı kart"
-        case .substitution: "Oyuncu değişikliği"
+    private var substitutionForm: some View {
+        VStack(spacing: 6) {
+            Toggle("Manuel Giriş", isOn: $manualPerson)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .padding(.horizontal, 4)
+
+            if manualPerson {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Çıkan", systemImage: "arrow.down.right.circle.fill")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.red)
+                    TextField("Çıkan Oyuncu", text: $manualOut)
+                }
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 11).fill(Color.red.opacity(0.12)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Giren", systemImage: "arrow.up.left.circle.fill")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.green)
+                    TextField("Giren Oyuncu", text: $manualIn)
+                }
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 11).fill(Color.green.opacity(0.12)))
+            } else {
+                VStack(spacing: 5) {
+                    playerPicker("Çıkan Oyuncu", selection: $playerOutID)
+                    playerPicker("Giren Oyuncu", selection: $playerInID)
+                }
+            }
+
+            Button {
+                saveSubstitution()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Değişikliği Kaydet")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.blue))
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                manualPerson
+                    ? manualOut.trimmed.isEmpty || manualIn.trimmed.isEmpty
+                    : playerOutID == playerInID || playerOutID.isEmpty || playerInID.isEmpty
+            )
         }
     }
 
-    private var cardKind: CardKind { pending.action == .redCard ? .red : .yellow }
+    private var reasonPicker: some View {
+        Picker("Neden", selection: $cardReason) {
+            ForEach(reasons, id: \.self) { reason in
+                Text(reason).tag(reason)
+            }
+        }
+        .pickerStyle(.navigationLink)
+    }
 
-    private var playerNumbers: [Int] {
-        guard let side else { return Array(1...99) }
-        return model.playerNumbers(for: side)
+    private var saveButton: some View {
+        Button {
+            pending.action == .goal ? saveGoal() : saveCard()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(pending.action == .goal ? "Golü Kaydet" : "Kartı Kaydet")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(actionColor))
+            .foregroundStyle(pending.action == .yellowCard ? Color.black : Color.white)
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedPerson == nil || (isCard && cardReason.isEmpty))
+    }
+
+    private var teamSelection: some View {
+        VStack(spacing: 6) {
+            Button {
+                selectSide(.home)
+            } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: model.teamColor(.home)) ?? .blue).frame(width: 7, height: 7)
+                    Text(model.teamLabel(.home))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                selectSide(.away)
+            } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: model.teamColor(.away)) ?? .cyan).frame(width: 7, height: 7)
+                    Text(model.teamLabel(.away))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func playerPicker(_ label: String, selection: Binding<String>) -> some View {
+        Picker(label, selection: selection) {
+            ForEach(players) { player in
+                Text(playerLabel(player)).tag(player.id)
+            }
+        }
+        .pickerStyle(.navigationLink)
+    }
+
+    private var players: [WatchRosterPlayer] {
+        guard let side else { return [] }
+        return model.rosterPlayers(for: side)
     }
 
     private var staffMembers: [WatchStaffMember] {
@@ -90,26 +309,104 @@ struct EventEntryView: View {
         return model.staffMembers(for: side)
     }
 
+    private var selectedPlayer: WatchRosterPlayer? {
+        players.first { $0.id == selectedPlayerID }
+    }
+
+    private var isCard: Bool {
+        pending.action == .yellowCard || pending.action == .redCard
+    }
+
+    private var selectedPerson: PersonReference? {
+        if manualPerson {
+            guard !manualName.trimmed.isEmpty else { return nil }
+            return PersonReference(number: role == .player ? Int(manualNumber) : nil, name: manualName.trimmed, role: role)
+        }
+        if role == .staff {
+            return staffName.isEmpty ? nil : PersonReference(name: staffName, role: .staff)
+        }
+        return selectedPlayer.map(personReference)
+    }
+
     private func selectSide(_ selectedSide: MatchSide) {
         side = selectedSide
-        let numbers = model.playerNumbers(for: selectedSide)
-        number = numbers.first ?? 1
-        playerOut = numbers.first ?? 1
-        playerIn = numbers.dropFirst().first ?? numbers.first ?? 2
-        staffName = model.staffMembers(for: selectedSide).first?.name ?? "Teknik ekip"
+        let list = model.rosterPlayers(for: selectedSide)
+        selectedPlayerID = list.first?.id ?? ""
+        playerOutID = list.first?.id ?? ""
+        playerInID = list.dropFirst().first?.id ?? list.first?.id ?? ""
+        staffName = model.staffMembers(for: selectedSide).first?.name ?? ""
     }
 
-    private func numberPicker(_ label: String, selection: Binding<Int>, values: [Int]) -> some View {
-        Picker(label, selection: selection) {
-            ForEach(values, id: \.self) { Text("#\($0)").tag($0) }
+    private func saveGoal() {
+        guard let side, let person = selectedPerson else { return }
+        model.addGoal(side: side, scorer: person, at: pending.occurredAt)
+        dismiss()
+    }
+
+    private func saveCard() {
+        guard let side, let person = selectedPerson else { return }
+        if cardKind == .yellow && model.yellowCardCount(side: side, person: person) >= 1 {
+            confirmSecondYellow = true
+        } else {
+            commitCard()
         }
-        .pickerStyle(.wheel)
-        .frame(height: 72)
     }
 
-    private func saveButton(_ label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(label) { action(); dismiss() }
-            .buttonStyle(.borderedProminent)
-            .disabled(disabled)
+    private func commitCard() {
+        guard let side, let person = selectedPerson else { return }
+        model.addCard(cardKind, side: side, person: person, reason: cardReason, at: pending.occurredAt)
+        dismiss()
     }
+
+    private func saveSubstitution() {
+        guard let side else { return }
+        if manualPerson {
+            model.addSubstitution(
+                side: side,
+                playerOut: PersonReference(name: manualOut.trimmed, role: .player),
+                playerIn: PersonReference(name: manualIn.trimmed, role: .player),
+                at: pending.occurredAt
+            )
+        } else if let out = players.first(where: { $0.id == playerOutID }),
+                  let incoming = players.first(where: { $0.id == playerInID }) {
+            model.addSubstitution(side: side, playerOut: out, playerIn: incoming, at: pending.occurredAt)
+        }
+        dismiss()
+    }
+
+    private func personReference(_ player: WatchRosterPlayer) -> PersonReference {
+        PersonReference(number: player.number, name: player.name, role: .player)
+    }
+
+    private func playerLabel(_ player: WatchRosterPlayer) -> String {
+        player.number.map { "#\($0) \(player.name)" } ?? player.name
+    }
+
+    private var reasons: [String] {
+        if pending.action == .redCard {
+            return role == .staff
+                ? ["Saldırgan davranış", "Hakaret / küfür", "Sahaya müdahale", "Rakip alana agresif giriş", "İkinci sarı"]
+                : ["Ciddi faullü oyun", "Şiddetli hareket", "Bariz gol şansını engelleme", "Isırma / tükürme", "Hakaret / küfür", "İkinci sarı"]
+        }
+        return role == .staff
+            ? ["İtiraz", "Oyunu geciktirme", "Provokatif davranış", "Teknik alan ihlali", "Oyuna saygısızlık"]
+            : ["Kontrolsüz müdahale", "Umut vadeden atağı kesme", "İtiraz", "Oyunu geciktirme", "Mesafeye uymama", "Tekrarlanan ihlal", "Sportmenlik dışı hareket", "İzinsiz giriş / çıkış"]
+    }
+
+    private var title: String {
+        switch pending.action {
+        case .goal: return "Gol"
+        case .yellowCard: return "Sarı Kart"
+        case .redCard: return "Kırmızı Kart"
+        case .substitution: return "Değişiklik"
+        }
+    }
+
+    private var cardKind: CardKind {
+        pending.action == .redCard ? .red : .yellow
+    }
+}
+
+private extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }

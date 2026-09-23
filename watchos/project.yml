@@ -19,6 +19,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.refapp.referee.watchkitapp
         INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/RefAppWatch.entitlements
         CODE_SIGNING_ALLOWED: NO
     dependencies:
       - package: RefAppWatchCore
