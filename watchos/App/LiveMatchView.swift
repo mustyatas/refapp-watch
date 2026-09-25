@@ -5,6 +5,7 @@ struct LiveMatchView: View {
     let model: LiveMatchModel
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @State private var selectedTab = 0
+    @State private var selectedSection = 0
     @State private var confirmPeriod = false
     @State private var showStoppageClock = false
     @State private var stoppageStartedAt: Date?
@@ -19,19 +20,27 @@ struct LiveMatchView: View {
                 let compact = geometry.size.width < 190
 
                 TabView(selection: $selectedTab) {
-                    scoreboard(clock: clock, now: context.date, compact: compact).tag(0)
-                    history.tag(1)
-                    performance.tag(2)
+                    TabView(selection: $selectedSection) {
+                            scoreboard(clock: clock, now: context.date, compact: compact).tag(0)
+                            history.tag(1)
+                            performance.tag(2)
+                    }
+                    .tabViewStyle(.verticalPage)
+                    .tag(0)
+
+                    if model.assignedMatches.count > 1 {
+                        assignedMatchesView.tag(1)
+                    }
                 }
-                .tabViewStyle(.verticalPage)
+                .tabViewStyle(.page)
                 .confirmationDialog(
                     "Maç Yönetimi",
                     isPresented: $confirmPeriod,
                     titleVisibility: .visible
                 ) {
                     if clock.isFinished {
-                        Button("Maça Devam Et (Geri Al)") {
-                            model.resumeMatch(at: Date())
+                        Button("Telefona Gönder") {
+                            model.resendFinalData()
                         }
                         Button("Maçı Yeniden Başlat (Sıfırla)", role: .destructive) {
                             model.restartMatch()
@@ -41,25 +50,13 @@ struct LiveMatchView: View {
                             Button("İlk Yarıyı Bitir") {
                                 model.advancePeriod(at: Date())
                             }
-                            Button("Maçı Bitir (90:00)", role: .destructive) {
-                                model.finishMatch(at: Date())
-                            }
                         } else if clock.period == .halfTime {
                             Button("İkinci Yarıyı Başlat") {
                                 model.advancePeriod(at: Date())
                             }
-                            Button("1. Yarıya Geri Dön") {
-                                model.resumeMatch(at: Date())
-                            }
-                            Button("Maçı Bitir (90:00)", role: .destructive) {
-                                model.finishMatch(at: Date())
-                            }
                         } else if clock.period == .secondHalf {
                             Button("Maçı Bitir (90:00)", role: .destructive) {
                                 model.finishMatch(at: Date())
-                            }
-                            Button("Devre Arasına Dön") {
-                                model.resumeMatch(at: Date())
                             }
                         } else if clock.period == .extraTimeFirst {
                             Button("1. Uzatmayı Bitir") {
@@ -88,6 +85,73 @@ struct LiveMatchView: View {
         .sheet(item: $actionTeam) { selection in
             TeamActionMenu(side: selection.side, model: model)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { model.finalSyncPresented },
+                set: { if !$0 { model.dismissFinalSync() } }
+            )
+        ) {
+            finalSyncView
+        }
+    }
+
+    private var assignedMatchesView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 7) {
+                Label("Atanan Maçlar", systemImage: "sportscourt.fill")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+
+                ForEach(model.assignedMatches, id: \.match.id) { package in
+                    let active = package.match.id == model.matchPackage?.match.id
+                    AssignedMatchRow(package: package, isActive: active) {
+                        model.selectMatch(package)
+                        if model.matchPackage?.match.id == package.match.id { selectedTab = 0 }
+                    }
+                    .disabled(!active && !model.canSelectAnotherMatch)
+                }
+
+                if !model.canSelectAnotherMatch {
+                    Text(model.pendingSyncCount > 0 ? "Önce biten maç telefona gönderilmeli." : "Devam eden maç bitmeden değiştirilemez.")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, 6)
+        }
+        .containerBackground(Color.black, for: .navigation)
+    }
+
+    private var finalSyncView: some View {
+        VStack(spacing: 9) {
+            Image(systemName: model.finalSyncCompleted ? "iphone.and.arrow.forward" : "arrow.triangle.2.circlepath.icloud")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(model.finalSyncCompleted ? .green : .cyan)
+                .symbolEffect(.pulse, isActive: !model.finalSyncCompleted)
+
+            Text(model.finalSyncCompleted ? "Telefona Gönderildi" : "Telefona Gönderiliyor")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+
+            Text(model.finalSyncCompleted ? "Maç bilgileri telefon tarafından alındı." : "\(model.pendingSyncCount) kayıt bekliyor. Telefon yakındaysa aktarım otomatik tamamlanır.")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            if model.finalSyncCompleted {
+                Button("Tamam") { model.dismissFinalSync() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+            } else {
+                Button("Telefona Tekrar Gönder") { model.resendFinalData() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.cyan)
+            }
+        }
+        .padding(8)
+        .containerBackground(
+            LinearGradient(colors: [Color.cyan.opacity(0.16), .black], startPoint: .top, endPoint: .bottom),
+            for: .navigation
+        )
     }
 
     private func scoreboard(clock: MatchClockState, now: Date, compact: Bool) -> some View {
@@ -217,14 +281,12 @@ struct LiveMatchView: View {
             .buttonStyle(.plain)
             .simultaneousGesture(
                 LongPressGesture().onEnded { _ in
-                    if !clock.isFinished {
-                        confirmPeriod = true
-                    }
+                    confirmPeriod = true
                 }
             )
             .accessibilityLabel("Kayıp zaman kronometresini aç, uzun basarak devreyi ilerlet")
 
-            if showStoppageClock && !isLuminanceReduced {
+            if eventsStarted && !clock.isFinished && clock.period != .halfTime && clock.period != .extraTimeBreak && !isLuminanceReduced {
                 compactStoppageClock(at: now)
             }
         }
@@ -391,54 +453,16 @@ struct LiveMatchView: View {
                 }
                 .buttonStyle(.plain)
             } else if clock.isFinished {
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "flag.checkered")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("MAÇ TAMAMLANDI")
-                            .font(.system(size: compact ? 9 : 10, weight: .black, design: .rounded))
-                    }
-                    .foregroundStyle(Color.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule().fill(Color.green.opacity(0.18))
-                    )
-
-                    HStack(spacing: 6) {
-                        Button {
-                            model.resumeMatch()
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.uturn.backward")
-                                    .font(.system(size: 8, weight: .bold))
-                                Text("Devam Et")
-                                    .font(.system(size: compact ? 9 : 10, weight: .bold, design: .rounded))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.green.opacity(0.25)))
-                            .foregroundStyle(.green)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            confirmPeriod = true
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 8, weight: .bold))
-                                Text("Yeniden Başlat")
-                                    .font(.system(size: compact ? 9 : 10, weight: .bold, design: .rounded))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.orange.opacity(0.2)))
-                            .foregroundStyle(.orange)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                HStack(spacing: 4) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("MAÇ TAMAMLANDI")
+                        .font(.system(size: compact ? 9 : 10, weight: .black, design: .rounded))
                 }
+                .foregroundStyle(Color.green)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.green.opacity(0.18)))
             }
         }
     }
@@ -877,9 +901,9 @@ struct LiveMatchView: View {
         guard let person else { return "-" }
         if let number = person.number {
             if let name = person.name, !name.isEmpty {
-                return "#\(number) \(name.prefix(4))"
+                return "\(number) \(name.prefix(4))"
             }
-            return "#\(number)"
+            return "\(number)"
         }
         if let name = person.name, !name.isEmpty {
             return String(name.prefix(6))
@@ -902,9 +926,9 @@ struct LiveMatchView: View {
 
     private func personLabel(_ person: PersonReference?) -> String {
         guard let person else { return "Oyuncu belirtilmedi" }
-        if let number = person.number, let name = person.name { return "#\(number) \(name)" }
+        if let number = person.number, let name = person.name { return "\(number) \(name)" }
         if let name = person.name { return name }
-        if let number = person.number { return "#\(number)" }
+        if let number = person.number { return "\(number)" }
         return "Oyuncu"
     }
 
@@ -967,6 +991,43 @@ struct LiveMatchView: View {
         case .extraTimeSecond: "UZATMA 2"
         case .penalties: "PENALTILAR"
         }
+    }
+}
+
+private struct AssignedMatchRow: View {
+    let package: WatchMatchPackage
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(package.match.homeTeamName + " – " + package.match.awayTeamName)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(2)
+                    Spacer(minLength: 3)
+                    Image(systemName: isActive ? "checkmark.circle.fill" : "chevron.right")
+                        .foregroundStyle(isActive ? Color.green : Color.secondary)
+                }
+                Text(String(package.match.scheduledAt.prefix(16)).replacingOccurrences(of: "T", with: " "))
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(rowBackground)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(isActive ? Color.green.opacity(0.18) : Color(white: 0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(isActive ? Color.green.opacity(0.55) : Color.white.opacity(0.10))
+            )
     }
 }
 

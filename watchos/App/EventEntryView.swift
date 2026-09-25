@@ -290,12 +290,37 @@ struct EventEntryView: View {
     }
 
     private func playerPicker(_ label: String, selection: Binding<String>, options: [WatchRosterPlayer]? = nil) -> some View {
-        Picker(label, selection: selection) {
-            ForEach(options ?? activePlayers) { player in
-                Text(playerLabel(player)).tag(player.id)
+        let availablePlayers = options ?? activePlayers
+        let selected = availablePlayers.first { $0.id == selection.wrappedValue }
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 3)
+            NavigationLink {
+                PlayerSelectionView(title: label, players: availablePlayers, selection: selection)
+            } label: {
+                HStack(spacing: 5) {
+                    Text(selected.map(playerLabel) ?? "Oyuncu seçin")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer(minLength: 3)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 11)
+                        .fill(Color(red: 0.10, green: 0.11, blue: 0.13))
+                        .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Color.white.opacity(0.16)))
+                )
             }
+            .buttonStyle(.plain)
         }
-        .pickerStyle(.navigationLink)
     }
 
     private var players: [WatchRosterPlayer] {
@@ -389,7 +414,7 @@ struct EventEntryView: View {
     }
 
     private func playerLabel(_ player: WatchRosterPlayer) -> String {
-        player.number.map { "#\($0) \(player.name)" } ?? player.name
+        player.number.map { "\($0)  \(player.name)" } ?? player.name
     }
 
     private var reasons: [String] {
@@ -414,6 +439,51 @@ struct EventEntryView: View {
 
     private var cardKind: CardKind {
         pending.action == .redCard ? .red : .yellow
+    }
+}
+
+private struct PlayerSelectionView: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let players: [WatchRosterPlayer]
+    @Binding var selection: String
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 5) {
+                ForEach(players) { player in
+                    Button {
+                        selection = player.id
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text(player.number.map(String.init) ?? "–")
+                                .font(.system(size: 12, weight: .black, design: .rounded))
+                                .frame(width: 24)
+                                .foregroundStyle(.cyan)
+                            Text(player.name)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Spacer(minLength: 2)
+                            if selection == player.id {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(selection == player.id ? Color.green.opacity(0.20) : Color(red: 0.10, green: 0.11, blue: 0.13))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.12)))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 5)
+        }
+        .navigationTitle(title)
     }
 }
 

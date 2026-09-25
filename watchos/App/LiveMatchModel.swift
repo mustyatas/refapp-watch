@@ -9,23 +9,33 @@ final class LiveMatchModel {
     private(set) var errorMessage: String?
     private(set) var pendingSyncCount = 0
     private(set) var matchPackage: WatchMatchPackage?
-    private(set) var matchID = LiveMatchModel.persistentUUID(forKey: "refapp.watch.active-match-id")
+    private(set) var assignedMatches: [WatchMatchPackage] = []
+    private(set) var finalSyncPresented = false
+    private(set) var finalSyncCompleted = false
+    private(set) var matchID: UUID
     let deviceID = LiveMatchModel.persistentDeviceID()
     private(set) var format: MatchFormat = .regulation
     let workout = WorkoutTrackingManager()
 
-    private let store: EventStore
+    private var store: EventStore
     private let syncCoordinator: WatchSyncCoordinator
 
     init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        store = EventStore(fileURL: base.appendingPathComponent("active-match-events.json"))
+        let initialMatchID = Self.persistentUUID(forKey: "refapp.watch.active-match-id")
+        matchID = initialMatchID
+        store = EventStore(fileURL: Self.eventStoreURL(base: base, matchID: initialMatchID))
         syncCoordinator = WatchSyncCoordinator()
         syncCoordinator.configure(
             eventProvider: { [weak self] in self?.events ?? [] },
             incomingEventsHandler: { [weak self] incoming in self?.mergeIncoming(incoming) },
             matchPackageHandler: { [weak self] package in self?.acceptMatchPackage(package) },
-            statusHandler: { [weak self] count in self?.pendingSyncCount = count }
+            statusHandler: { [weak self] count in
+                self?.pendingSyncCount = count
+                if self?.finalSyncPresented == true, count == 0 {
+                    self?.finalSyncCompleted = true
+                }
+            }
         )
         syncCoordinator.start()
         restoreMatchPackage()
@@ -36,6 +46,9 @@ final class LiveMatchModel {
 
     func clock(at date: Date) -> MatchClockState { MatchEngine.clock(from: events, format: format, now: date) }
     var score: MatchScore { MatchEngine.score(from: events) }
+    var canSelectAnotherMatch: Bool {
+        events.isEmpty || (clock(at: Date()).isFinished && pendingSyncCount == 0)
+    }
 
     func checkBoundaryAlert(for clock: MatchClockState) {
         guard clock.isRunning else { return }
@@ -70,9 +83,10 @@ final class LiveMatchModel {
     }
 
     func rosterPlayers(for side: MatchSide) -> [WatchRosterPlayer] {
-        matchPackage?.roster
+        let assigned = matchPackage?.roster
             .filter { $0.side == side }
             .sorted { ($0.number ?? 999, $0.name) < ($1.number ?? 999, $1.name) } ?? []
+        return assigned.isEmpty ? demoPlayers(for: side) : assigned
     }
 
     func activePlayers(for side: MatchSide) -> [WatchRosterPlayer] {
@@ -306,6 +320,8 @@ final class LiveMatchModel {
         Task {
             do {
                 events = try await store.replace(with: newEvents)
+                finalSyncPresented = false
+                finalSyncCompleted = false
                 syncCoordinator.eventsDidChange(force: true)
                 await workout.finish(at: date)
                 WKInterfaceDevice.current().play(.success)
@@ -315,7 +331,33 @@ final class LiveMatchModel {
         }
     }
 
+    func resendFinalData() {
+        finalSyncPresented = true
+        finalSyncCompleted = false
+        syncCoordinator.eventsDidChange(force: true)
+    }
+
+    func dismissFinalSync() {
+        finalSyncPresented = false
+    }
+
+    func selectMatch(_ package: WatchMatchPackage) {
+        guard package.match.id != matchPackage?.match.id, canSelectAnotherMatch,
+              let incomingMatchID = UUID(uuidString: package.match.id) else { return }
+        matchPackage = package
+        matchID = incomingMatchID
+        format = package.match.format
+        store = EventStore(fileURL: Self.eventStoreURL(base: Self.applicationSupportURL, matchID: incomingMatchID))
+        alertedBoundaries.removeAll()
+        finalSyncPresented = false
+        finalSyncCompleted = false
+        persistActiveMatch(package)
+        Task { await restore() }
+    }
+
     func restartMatch() {
+        finalSyncPresented = false
+        finalSyncCompleted = false
         Task {
             do {
                 events = try await store.replace(with: [])
@@ -361,35 +403,72 @@ final class LiveMatchModel {
     }
 
     private func acceptMatchPackage(_ package: WatchMatchPackage) {
-        let incomingMatchID = UUID(uuidString: package.match.id)
-        let isNewMatch = incomingMatchID != nil && incomingMatchID != matchID
-        matchPackage = package
-        format = package.match.format
-        if let incomingMatchID {
-            matchID = incomingMatchID
-            UserDefaults.standard.set(incomingMatchID.uuidString, forKey: "refapp.watch.active-match-id")
+        if let index = assignedMatches.firstIndex(where: { $0.match.id == package.match.id }) {
+            assignedMatches[index] = package
+        } else {
+            assignedMatches.append(package)
         }
-        if let data = try? JSONEncoder().encode(package) {
-            UserDefaults.standard.set(data, forKey: "refapp.watch.active-match-package")
+        assignedMatches.sort { $0.match.scheduledAt < $1.match.scheduledAt }
+        persistAssignedMatches()
+
+        if matchPackage?.match.id == package.match.id {
+            matchPackage = package
+            format = package.match.format
+            persistActiveMatch(package)
+        } else if matchPackage == nil || (events.isEmpty && assignedMatches.count == 1) {
+            selectMatch(package)
         }
-        guard isNewMatch else { return }
-        alertedBoundaries.removeAll()
-        Task {
-            do {
-                events = try await store.replace(with: [])
-                syncCoordinator.eventsDidChange()
-                WKInterfaceDevice.current().play(.success)
-            } catch {
-                errorMessage = "Yeni maç açılamadı"
-            }
-        }
+        WKInterfaceDevice.current().play(.success)
     }
 
     private func restoreMatchPackage() {
+        if let data = UserDefaults.standard.data(forKey: "refapp.watch.assigned-match-packages"),
+           let packages = try? JSONDecoder().decode([WatchMatchPackage].self, from: data) {
+            assignedMatches = packages
+        }
         guard let data = UserDefaults.standard.data(forKey: "refapp.watch.active-match-package"),
               let package = try? JSONDecoder().decode(WatchMatchPackage.self, from: data) else { return }
         matchPackage = package
         format = package.match.format
+        if !assignedMatches.contains(where: { $0.match.id == package.match.id }) {
+            assignedMatches.append(package)
+        }
+    }
+
+    private func persistActiveMatch(_ package: WatchMatchPackage) {
+        UserDefaults.standard.set(matchID.uuidString, forKey: "refapp.watch.active-match-id")
+        if let data = try? JSONEncoder().encode(package) {
+            UserDefaults.standard.set(data, forKey: "refapp.watch.active-match-package")
+        }
+    }
+
+    private func persistAssignedMatches() {
+        if let data = try? JSONEncoder().encode(assignedMatches) {
+            UserDefaults.standard.set(data, forKey: "refapp.watch.assigned-match-packages")
+        }
+    }
+
+    private static var applicationSupportURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    }
+
+    private static func eventStoreURL(base: URL, matchID: UUID) -> URL {
+        base.appendingPathComponent("match-\(matchID.uuidString.lowercased())-events.json")
+    }
+
+    private func demoPlayers(for side: MatchSide) -> [WatchRosterPlayer] {
+        let names = side == .home
+            ? ["Kaleci", "Sağ Bek", "Stoper", "Stoper", "Sol Bek", "Orta Saha", "Orta Saha", "Sağ Kanat", "Forvet", "Oyun Kurucu", "Sol Kanat"]
+            : ["Kaleci", "Sağ Bek", "Stoper", "Stoper", "Sol Bek", "Orta Saha", "Orta Saha", "Sağ Kanat", "Forvet", "Oyun Kurucu", "Sol Kanat"]
+        return names.enumerated().map { index, name in
+            WatchRosterPlayer(
+                id: "demo-\(side.rawValue)-\(index + 1)",
+                side: side,
+                name: "\(name) \(index + 1)",
+                number: index + 1,
+                isStarter: true
+            )
+        }
     }
 
     private static func persistentDeviceID() -> String {

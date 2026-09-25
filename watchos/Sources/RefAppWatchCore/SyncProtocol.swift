@@ -40,6 +40,14 @@ public struct WatchRosterPlayer: Codable, Equatable, Sendable, Identifiable {
     public let name: String
     public let number: Int?
     public let isStarter: Bool
+
+    public init(id: String, side: MatchSide, name: String, number: Int?, isStarter: Bool) {
+        self.id = id
+        self.side = side
+        self.name = name
+        self.number = number
+        self.isStarter = isStarter
+    }
 }
 
 public struct WatchStaffMember: Codable, Equatable, Sendable, Identifiable {
