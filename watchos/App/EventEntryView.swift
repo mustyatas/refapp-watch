@@ -87,8 +87,7 @@ struct EventEntryView: View {
         ) {
             Button("Sarı + Kırmızı Kaydet", role: .destructive) {
                 guard let side, let person = selectedPerson else { return }
-                model.addCard(.yellow, side: side, person: person, reason: cardReason, at: pending.occurredAt)
-                model.addCard(.red, side: side, person: person, reason: "İkinci sarı kart", at: pending.occurredAt)
+                model.addSecondYellow(side: side, person: person, reason: cardReason, at: pending.occurredAt)
                 dismiss()
             }
             Button("Yalnız Sarı Kaydet") {
@@ -202,8 +201,8 @@ struct EventEntryView: View {
                 .background(RoundedRectangle(cornerRadius: 11).fill(Color.green.opacity(0.12)))
             } else {
                 VStack(spacing: 5) {
-                    playerPicker("Çıkan Oyuncu", selection: $playerOutID)
-                    playerPicker("Giren Oyuncu", selection: $playerInID)
+                    playerPicker("Çıkan Oyuncu", selection: $playerOutID, options: activePlayers)
+                    playerPicker("Giren Oyuncu", selection: $playerInID, options: benchPlayers)
                 }
             }
 
@@ -290,9 +289,9 @@ struct EventEntryView: View {
         }
     }
 
-    private func playerPicker(_ label: String, selection: Binding<String>) -> some View {
+    private func playerPicker(_ label: String, selection: Binding<String>, options: [WatchRosterPlayer]? = nil) -> some View {
         Picker(label, selection: selection) {
-            ForEach(players) { player in
+            ForEach(options ?? activePlayers) { player in
                 Text(playerLabel(player)).tag(player.id)
             }
         }
@@ -304,13 +303,23 @@ struct EventEntryView: View {
         return model.rosterPlayers(for: side)
     }
 
+    private var activePlayers: [WatchRosterPlayer] {
+        guard let side else { return [] }
+        return model.activePlayers(for: side)
+    }
+
+    private var benchPlayers: [WatchRosterPlayer] {
+        guard let side else { return [] }
+        return model.benchPlayers(for: side)
+    }
+
     private var staffMembers: [WatchStaffMember] {
         guard let side else { return [] }
         return model.staffMembers(for: side)
     }
 
     private var selectedPlayer: WatchRosterPlayer? {
-        players.first { $0.id == selectedPlayerID }
+        activePlayers.first { $0.id == selectedPlayerID }
     }
 
     private var isCard: Bool {
@@ -330,10 +339,11 @@ struct EventEntryView: View {
 
     private func selectSide(_ selectedSide: MatchSide) {
         side = selectedSide
-        let list = model.rosterPlayers(for: selectedSide)
-        selectedPlayerID = list.first?.id ?? ""
-        playerOutID = list.first?.id ?? ""
-        playerInID = list.dropFirst().first?.id ?? list.first?.id ?? ""
+        let active = model.activePlayers(for: selectedSide)
+        let bench = model.benchPlayers(for: selectedSide)
+        selectedPlayerID = active.first?.id ?? ""
+        playerOutID = active.first?.id ?? ""
+        playerInID = bench.first?.id ?? ""
         staffName = model.staffMembers(for: selectedSide).first?.name ?? ""
     }
 
@@ -367,8 +377,8 @@ struct EventEntryView: View {
                 playerIn: PersonReference(name: manualIn.trimmed, role: .player),
                 at: pending.occurredAt
             )
-        } else if let out = players.first(where: { $0.id == playerOutID }),
-                  let incoming = players.first(where: { $0.id == playerInID }) {
+        } else if let out = activePlayers.first(where: { $0.id == playerOutID }),
+                  let incoming = benchPlayers.first(where: { $0.id == playerInID }) {
             model.addSubstitution(side: side, playerOut: out, playerIn: incoming, at: pending.occurredAt)
         }
         dismiss()

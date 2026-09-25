@@ -75,6 +75,51 @@ final class LiveMatchModel {
             .sorted { ($0.number ?? 999, $0.name) < ($1.number ?? 999, $1.name) } ?? []
     }
 
+    func activePlayers(for side: MatchSide) -> [WatchRosterPlayer] {
+        var active = rosterPlayers(for: side).filter(\.isStarter)
+        var yellowCounts: [String: Int] = [:]
+        for event in MatchEngine.activeEvents(events) {
+            switch event.payload {
+            case .substitution(let eventSide, let playerOut, let playerIn) where eventSide == side:
+                active.removeAll { matches($0, playerOut) }
+                if let incoming = rosterPlayers(for: side).first(where: { matches($0, playerIn) }),
+                   !active.contains(where: { $0.id == incoming.id }) {
+                    active.append(incoming)
+                }
+            case .card(let kind, let eventSide, let person, _) where eventSide == side && person.role == .player:
+                let key = personKey(person)
+                if kind == .yellow {
+                    yellowCounts[key, default: 0] += 1
+                    if yellowCounts[key, default: 0] >= 2 { active.removeAll { matches($0, person) } }
+                } else if kind == .red {
+                    active.removeAll { matches($0, person) }
+                }
+            default: break
+            }
+        }
+        return active.sorted { ($0.number ?? 999, $0.name) < ($1.number ?? 999, $1.name) }
+    }
+
+    func benchPlayers(for side: MatchSide) -> [WatchRosterPlayer] {
+        let roster = rosterPlayers(for: side)
+        let activeIDs = Set(activePlayers(for: side).map(\.id))
+        let usedIncomingIDs = Set(MatchEngine.activeEvents(events).compactMap { event -> String? in
+            guard case .substitution(let eventSide, _, let playerIn) = event.payload, eventSide == side else { return nil }
+            return roster.first(where: { matches($0, playerIn) })?.id
+        })
+        return roster.filter { !$0.isStarter && !activeIDs.contains($0.id) && !usedIncomingIDs.contains($0.id) }
+    }
+
+    private func matches(_ player: WatchRosterPlayer, _ person: PersonReference) -> Bool {
+        if let number = person.number, let playerNumber = player.number { return number == playerNumber }
+        return person.name?.localizedCaseInsensitiveCompare(player.name) == .orderedSame
+    }
+
+    private func personKey(_ person: PersonReference) -> String {
+        if let number = person.number { return "n:\(number)" }
+        return "s:\(person.name?.lowercased() ?? "")"
+    }
+
     func staffMembers(for side: MatchSide) -> [WatchStaffMember] {
         matchPackage?.staff.filter { $0.side == side } ?? []
     }
@@ -138,6 +183,21 @@ final class LiveMatchModel {
 
     func addCard(_ card: CardKind, side: MatchSide, person: PersonReference, reason: String? = nil, at date: Date) {
         append(.card(card, side: side, person: person, reason: reason), at: date)
+    }
+
+    func addSecondYellow(side: MatchSide, person: PersonReference, reason: String?, at date: Date) {
+        let yellow = MatchEvent(matchID: matchID, occurredAt: date, deviceID: deviceID, payload: .card(.yellow, side: side, person: person, reason: reason))
+        let red = MatchEvent(matchID: matchID, occurredAt: date.addingTimeInterval(0.001), deviceID: deviceID, payload: .card(.red, side: side, person: person, reason: "İkinci sarı kart"))
+        Task {
+            do {
+                events = try await store.merge([yellow, red])
+                syncCoordinator.eventsDidChange()
+                WKInterfaceDevice.current().play(.success)
+            } catch {
+                errorMessage = "Kart kaydedilemedi"
+                WKInterfaceDevice.current().play(.failure)
+            }
+        }
     }
 
     func addSubstitution(side: MatchSide, playerOut: Int, playerIn: Int, at date: Date) {
@@ -246,7 +306,7 @@ final class LiveMatchModel {
         Task {
             do {
                 events = try await store.replace(with: newEvents)
-                syncCoordinator.eventsDidChange()
+                syncCoordinator.eventsDidChange(force: true)
                 await workout.finish(at: date)
                 WKInterfaceDevice.current().play(.success)
             } catch {

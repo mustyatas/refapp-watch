@@ -47,7 +47,8 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
         updatePendingCount()
     }
 
-    func eventsDidChange() {
+    func eventsDidChange(force: Bool = false) {
+        if force { lastQueuedFingerprint = nil }
         updatePendingCount()
         flushPendingEvents()
     }
