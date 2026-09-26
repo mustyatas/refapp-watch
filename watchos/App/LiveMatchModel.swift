@@ -3,6 +3,16 @@ import Observation
 import WatchKit
 import RefAppWatchCore
 
+/// What the assigned-match list needs to know about one match without making it
+/// the active one: whether it has been played out, and whether anything is
+/// still waiting to reach the phone.
+struct AssignedMatchStatus: Equatable, Sendable {
+    var isFinished: Bool
+    var pendingCount: Int
+
+    var isSynced: Bool { pendingCount == 0 }
+}
+
 @MainActor @Observable
 final class LiveMatchModel {
     private(set) var events: [MatchEvent] = []
@@ -10,6 +20,7 @@ final class LiveMatchModel {
     private(set) var pendingSyncCount = 0
     private(set) var matchPackage: WatchMatchPackage?
     private(set) var assignedMatches: [WatchMatchPackage] = []
+    private(set) var matchStatuses: [String: AssignedMatchStatus] = [:]
     private(set) var finalSyncPresented = false
     private(set) var finalSyncCompleted = false
     private(set) var matchID: UUID
@@ -408,7 +419,7 @@ final class LiveMatchModel {
         } else {
             assignedMatches.append(package)
         }
-        assignedMatches.sort { $0.match.scheduledAt < $1.match.scheduledAt }
+        sortAssignedMatches()
         persistAssignedMatches()
 
         if matchPackage?.match.id == package.match.id {
@@ -433,6 +444,75 @@ final class LiveMatchModel {
         if !assignedMatches.contains(where: { $0.match.id == package.match.id }) {
             assignedMatches.append(package)
         }
+    }
+
+    /// Matches still to play come first, nearest kick-off at the top; played
+    /// matches fall to the bottom in the same order.
+    private func sortAssignedMatches() {
+        assignedMatches.sort { lhs, rhs in
+            let lhsFinished = matchStatuses[lhs.match.id]?.isFinished ?? false
+            let rhsFinished = matchStatuses[rhs.match.id]?.isFinished ?? false
+            if lhsFinished != rhsFinished { return !lhsFinished }
+            return lhs.match.scheduledAt < rhs.match.scheduledAt
+        }
+    }
+
+    /// Reads each assigned match's own event file so the list can show its state.
+    func refreshAssignedStatuses() async {
+        let acknowledged = syncCoordinator.acknowledgedEventIDsSnapshot()
+        let now = Date()
+        var next: [String: AssignedMatchStatus] = [:]
+
+        for package in assignedMatches {
+            guard let id = UUID(uuidString: package.match.id) else { continue }
+            let matchEvents: [MatchEvent]
+            if id == matchID {
+                matchEvents = events
+            } else {
+                let otherStore = EventStore(fileURL: Self.eventStoreURL(base: Self.applicationSupportURL, matchID: id))
+                matchEvents = (try? await otherStore.load()) ?? []
+            }
+            let finished = MatchEngine.clock(from: matchEvents, format: package.match.format, now: now).isFinished
+            let pending = SyncEngine.pendingEvents(
+                from: matchEvents.filter { $0.deviceID == deviceID },
+                acknowledgedEventIDs: acknowledged
+            ).count
+            next[package.match.id] = AssignedMatchStatus(isFinished: finished, pendingCount: pending)
+        }
+
+        matchStatuses = next
+        sortAssignedMatches()
+    }
+
+    /// Deleting a match with unsent events would strand them: the phone never
+    /// receives what the watch recorded. Only settled matches may be removed.
+    func canDeleteMatch(_ package: WatchMatchPackage) -> Bool {
+        guard let status = matchStatuses[package.match.id] else { return false }
+        guard status.isSynced else { return false }
+        if package.match.id == matchPackage?.match.id {
+            return events.isEmpty || status.isFinished
+        }
+        return true
+    }
+
+    func deleteMatch(_ package: WatchMatchPackage) {
+        guard canDeleteMatch(package), let id = UUID(uuidString: package.match.id) else { return }
+
+        assignedMatches.removeAll { $0.match.id == package.match.id }
+        matchStatuses.removeValue(forKey: package.match.id)
+        persistAssignedMatches()
+        try? FileManager.default.removeItem(at: Self.eventStoreURL(base: Self.applicationSupportURL, matchID: id))
+
+        if matchPackage?.match.id == package.match.id {
+            matchPackage = nil
+            events = []
+            alertedBoundaries.removeAll()
+            finalSyncPresented = false
+            finalSyncCompleted = false
+            UserDefaults.standard.removeObject(forKey: "refapp.watch.active-match-package")
+        }
+
+        WKInterfaceDevice.current().play(.click)
     }
 
     private func persistActiveMatch(_ package: WatchMatchPackage) {
