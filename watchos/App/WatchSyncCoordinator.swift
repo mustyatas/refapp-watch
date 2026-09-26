@@ -152,6 +152,10 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
         UserDefaults.standard.string(forKey: "refapp.watch.device-id") ?? "unknown-watch"
     }
 
+    /// Exposed so the model can work out what each assigned match still owes the
+    /// phone, not just the active one.
+    func acknowledgedEventIDsSnapshot() -> Set<UUID> { acknowledgedEventIDs() }
+
     private func acknowledgedEventIDs() -> Set<UUID> {
         let values = UserDefaults.standard.stringArray(forKey: Key.acknowledgedIDs) ?? []
         return Set(values.compactMap(UUID.init(uuidString:)))

@@ -12,6 +12,7 @@ struct LiveMatchView: View {
     @State private var accumulatedStoppage: TimeInterval = 0
     @State private var kickoffSide: MatchSide?
     @State private var actionTeam: TeamActionSelection?
+    @State private var pendingDeletion: WatchMatchPackage?
 
     var body: some View {
         GeometryReader { geometry in
@@ -103,10 +104,17 @@ struct LiveMatchView: View {
 
                 ForEach(model.assignedMatches, id: \.match.id) { package in
                     let active = package.match.id == model.matchPackage?.match.id
-                    AssignedMatchRow(package: package, isActive: active) {
-                        model.selectMatch(package)
-                        if model.matchPackage?.match.id == package.match.id { selectedTab = 0 }
-                    }
+                    AssignedMatchRow(
+                        package: package,
+                        isActive: active,
+                        status: model.matchStatuses[package.match.id],
+                        canDelete: model.canDeleteMatch(package),
+                        action: {
+                            model.selectMatch(package)
+                            if model.matchPackage?.match.id == package.match.id { selectedTab = 0 }
+                        },
+                        onDelete: { pendingDeletion = package }
+                    )
                     .disabled(!active && !model.canSelectAnotherMatch)
                 }
 
@@ -119,6 +127,17 @@ struct LiveMatchView: View {
             .padding(.horizontal, 6)
         }
         .containerBackground(Color.black, for: .navigation)
+        .task(id: model.pendingSyncCount) { await model.refreshAssignedStatuses() }
+        .alert("Maçı sil", isPresented: deletionBinding, presenting: pendingDeletion) { package in
+            Button("Sil", role: .destructive) { model.deleteMatch(package) }
+            Button("Vazgeç", role: .cancel) { pendingDeletion = nil }
+        } message: { package in
+            Text("\(package.match.homeTeamName) – \(package.match.awayTeamName) saatten silinecek. Telefondaki kayıt silinmez.")
+        }
+    }
+
+    private var deletionBinding: Binding<Bool> {
+        Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })
     }
 
     private var finalSyncView: some View {
@@ -997,28 +1016,66 @@ struct LiveMatchView: View {
 private struct AssignedMatchRow: View {
     let package: WatchMatchPackage
     let isActive: Bool
+    let status: AssignedMatchStatus?
+    let canDelete: Bool
     let action: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(package.match.homeTeamName + " – " + package.match.awayTeamName)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .lineLimit(2)
-                    Spacer(minLength: 3)
-                    Image(systemName: isActive ? "checkmark.circle.fill" : "chevron.right")
-                        .foregroundStyle(isActive ? Color.green : Color.secondary)
-                }
-                Text(String(package.match.scheduledAt.prefix(16)).replacingOccurrences(of: "T", with: " "))
+        HStack(spacing: 4) {
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(package.match.homeTeamName + " – " + package.match.awayTeamName)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                        Spacer(minLength: 3)
+                        Image(systemName: statusSymbol)
+                            .foregroundStyle(statusColor)
+                    }
+                    HStack(spacing: 4) {
+                        Text(String(package.match.scheduledAt.prefix(16)).replacingOccurrences(of: "T", with: " "))
+                        if let status, status.isFinished, !status.isSynced {
+                            Text("· \(status.pendingCount) kayıt bekliyor")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(rowBackground)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(rowBackground)
+            .buttonStyle(.plain)
+
+            if canDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.red)
+                        .frame(width: 30, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Maçı sil")
+            }
         }
-        .buttonStyle(.plain)
+    }
+
+    /// Finished and sent is the only state that earns a tick; finished with
+    /// records still queued must not look settled.
+    private var statusSymbol: String {
+        guard let status, status.isFinished else {
+            return isActive ? "play.circle.fill" : "chevron.right"
+        }
+        return status.isSynced ? "checkmark.circle.fill" : "arrow.up.circle.fill"
+    }
+
+    private var statusColor: Color {
+        guard let status, status.isFinished else {
+            return isActive ? Color.cyan : Color.secondary
+        }
+        return status.isSynced ? Color.green : Color.orange
     }
 
     private var rowBackground: some View {
