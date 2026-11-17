@@ -18,6 +18,8 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
     private var matchPackageHandler: (WatchMatchPackage) -> Void = { _ in }
     private var statusHandler: (Int) -> Void = { _ in }
     private var lastQueuedFingerprint: String?
+    /// Told when the phone acknowledged a batch, so track chunks can be dropped.
+    var batchAcknowledged: @MainActor (String) -> Void = { _ in }
 
     override init() {
         session = WCSession.isSupported() ? .default : nil
@@ -105,6 +107,7 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
             var acknowledged = acknowledgedEventIDs()
             acknowledged.formUnion(acknowledgement.acknowledgedEventIDs)
             saveAcknowledgedEventIDs(acknowledged)
+            batchAcknowledged(acknowledgement.batchID.uuidString)
             lastQueuedFingerprint = nil
             updatePendingCount()
             flushPendingEvents()
@@ -123,6 +126,15 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
         case nil:
             return
         }
+    }
+
+    /// Sends an already encoded batch, e.g. a GPS track chunk.
+    func sendRawBatch(_ data: Data) {
+        guard let session, session.activationState == .activated else { return }
+        session.transferUserInfo([
+            Key.kind: SyncMessageKind.eventBatch.rawValue,
+            Key.payload: data,
+        ])
     }
 
     private func sendAcknowledgement(for batch: EventBatch) {

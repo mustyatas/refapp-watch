@@ -13,6 +13,7 @@ struct LiveMatchView: View {
     @State private var kickoffSide: MatchSide?
     @State private var actionTeam: TeamActionSelection?
     @State private var pendingDeletion: WatchMatchPackage?
+    @State private var showPitchMenu = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -430,14 +431,28 @@ struct LiveMatchView: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.system(size: 8))
-                        Text("Vuruş yapan takıma dokunun")
-                            .font(.system(size: compact ? 8 : 9, weight: .semibold, design: .rounded))
+                    VStack(spacing: 3) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "hand.tap.fill")
+                                .font(.system(size: 8))
+                            Text("Vuruş yapan takıma dokunun")
+                                .font(.system(size: compact ? 8 : 9, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(.secondary)
+                        Button("Saha") { showPitchMenu = true }
+                            .font(.system(size: compact ? 9 : 10, weight: .bold, design: .rounded))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.orange)
                     }
-                    .foregroundStyle(.secondary)
                     .padding(.vertical, 2)
+                    .confirmationDialog("Saha", isPresented: $showPitchMenu, titleVisibility: .visible) {
+                        Button("Orta Noktayı İşaretle") { model.markPitch("center") }
+                        Button("Köşe Bayrağını İşaretle") { model.markPitch("corner") }
+                        Button(model.tracker.isEnabled ? "Konum Kaydını Kapat" : "Konum Kaydını Aç") { model.toggleTracking() }
+                        Button("Vazgeç", role: .cancel) {}
+                    } message: {
+                        Text("Isı haritası için önce orta noktada, sonra bir köşe bayrağında durup işaretleyin.")
+                    }
                 }
             } else if clock.period == .halfTime {
                 Button {
@@ -803,7 +818,7 @@ struct LiveMatchView: View {
         .onTapGesture { toggleStoppageClock(at: date) }
     }
 
-    private var eventsStarted: Bool { !model.events.isEmpty }
+    private var eventsStarted: Bool { model.hasKickedOff }
 
     private var hasUndoableEvent: Bool {
         MatchEngine.activeEvents(model.events).contains { event in

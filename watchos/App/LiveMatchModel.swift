@@ -27,6 +27,7 @@ final class LiveMatchModel {
     let deviceID = LiveMatchModel.persistentDeviceID()
     private(set) var format: MatchFormat = .regulation
     let workout = WorkoutTrackingManager()
+    let tracker = MatchTrackRecorder()
 
     private var store: EventStore
     private let syncCoordinator: WatchSyncCoordinator
@@ -49,6 +50,10 @@ final class LiveMatchModel {
             }
         )
         syncCoordinator.start()
+        tracker.heartRate = { [weak self] in self?.workout.heartRate ?? 0 }
+        tracker.send = { [weak self] data in self?.syncCoordinator.sendRawBatch(data) }
+        syncCoordinator.batchAcknowledged = { [weak self] batchID in self?.tracker.acknowledge(batchID: batchID) }
+        for data in tracker.pendingBatches() { syncCoordinator.sendRawBatch(data) }
         restoreMatchPackage()
         Task { await restore() }
     }
@@ -58,7 +63,27 @@ final class LiveMatchModel {
     func clock(at date: Date) -> MatchClockState { MatchEngine.clock(from: events, format: format, now: date) }
     var score: MatchScore { MatchEngine.score(from: events) }
     var canSelectAnotherMatch: Bool {
-        events.isEmpty || (clock(at: Date()).isFinished && pendingSyncCount == 0)
+        !hasKickedOff || (clock(at: Date()).isFinished && pendingSyncCount == 0)
+    }
+
+    /// Pitch marks are notes written before kick-off, so "has events" no longer means
+    /// "has started".
+    var hasKickedOff: Bool {
+        events.contains { event in
+            if case .periodStarted = event.payload { return true }
+            return false
+        }
+    }
+
+    func markPitch(_ which: String) {
+        tracker.mark(which) { [weak self] lat, lon in
+            self?.append(.note("pitch:" + which + ":" + String(format: "%.7f,%.7f", lat, lon)), at: Date())
+        }
+    }
+
+    func toggleTracking() {
+        tracker.isEnabled.toggle()
+        if !tracker.isEnabled { tracker.stop() }
     }
 
     func checkBoundaryAlert(for clock: MatchClockState) {
@@ -153,16 +178,17 @@ final class LiveMatchModel {
         let clock = clock(at: date)
         guard !clock.isFinished, clock.period != .halfTime, clock.period != .extraTimeBreak else { return }
         let payload: MatchEventPayload
-        if events.isEmpty {
+        if !hasKickedOff {
             payload = .periodStarted(.firstHalf)
             Task { await workout.start(at: date) }
+            tracker.start(matchID: matchID, deviceID: deviceID)
         }
         else { payload = clock.isRunning ? .clockPaused(reason: nil) : .clockResumed }
         append(payload, at: date)
     }
 
     func startMatch(kickoffSide: MatchSide, at date: Date) {
-        guard events.isEmpty else { return }
+        guard !hasKickedOff else { return }
         let start = MatchEvent(matchID: matchID, occurredAt: date, deviceID: deviceID, payload: .periodStarted(.firstHalf))
         let kickoff = MatchEvent(matchID: matchID, occurredAt: date.addingTimeInterval(0.001), deviceID: deviceID, payload: .note("kickoff:\(kickoffSide.rawValue)"))
         Task {
@@ -170,6 +196,7 @@ final class LiveMatchModel {
                 events = try await store.merge([start, kickoff])
                 syncCoordinator.eventsDidChange()
                 await workout.start(at: date)
+                tracker.start(matchID: matchID, deviceID: deviceID)
                 WKInterfaceDevice.current().play(.success)
             } catch {
                 errorMessage = "Maç başlatılamadı"
@@ -278,6 +305,8 @@ final class LiveMatchModel {
         case .penalties: payload = .periodEnded(.penalties); Task { await workout.finish(at: date) }
         }
         append(payload, at: date)
+        // Each period's track goes to the phone as soon as the period ends.
+        if case .periodEnded = payload { tracker.closeChunk() }
     }
 
     func periodActionLabel(at date: Date) -> String {
@@ -334,6 +363,7 @@ final class LiveMatchModel {
                 finalSyncPresented = false
                 finalSyncCompleted = false
                 syncCoordinator.eventsDidChange(force: true)
+                tracker.stop()
                 await workout.finish(at: date)
                 WKInterfaceDevice.current().play(.success)
             } catch {
@@ -343,6 +373,7 @@ final class LiveMatchModel {
     }
 
     func resendFinalData() {
+        for data in tracker.pendingBatches() { syncCoordinator.sendRawBatch(data) }
         finalSyncPresented = true
         finalSyncCompleted = false
         syncCoordinator.eventsDidChange(force: true)
@@ -367,6 +398,7 @@ final class LiveMatchModel {
     }
 
     func restartMatch() {
+        tracker.stop()
         finalSyncPresented = false
         finalSyncCompleted = false
         Task {
@@ -398,6 +430,8 @@ final class LiveMatchModel {
         do {
             events = try await store.load()
             syncCoordinator.eventsDidChange()
+            // Reopened mid-match: keep recording where it stopped.
+            if hasKickedOff && !clock(at: Date()).isFinished { tracker.start(matchID: matchID, deviceID: deviceID) }
         }
         catch { errorMessage = "Maç kaydı açılamadı" }
     }
@@ -426,7 +460,7 @@ final class LiveMatchModel {
             matchPackage = package
             format = package.match.format
             persistActiveMatch(package)
-        } else if matchPackage == nil || (events.isEmpty && assignedMatches.count == 1) {
+        } else if matchPackage == nil || (!hasKickedOff && assignedMatches.count == 1) {
             selectMatch(package)
         }
         WKInterfaceDevice.current().play(.success)

@@ -22,6 +22,8 @@
     <true/>
     <key>WKCompanionAppBundleIdentifier</key>
     <string>com.refapp.referee</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Maç sonunda hakemin sahadaki ısı haritasını ve koşu mesafesini göstermek için konum kaydedilir.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>Maç sırasında mesafe, hız ve nabız istatistiklerini göstermek için Sağlık verileri kullanılır.</string>
     <key>NSHealthUpdateUsageDescription</key>
