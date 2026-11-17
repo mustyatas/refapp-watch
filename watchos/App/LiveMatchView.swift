@@ -783,7 +783,7 @@ struct LiveMatchView: View {
 
     private func eventSide(_ event: MatchEvent) -> MatchSide? {
         switch event.payload {
-        case .goal(let side, _), .card(_, let side, _, _), .substitution(let side, _, _):
+        case .goal(let side, _, _), .card(_, let side, _, _), .substitution(let side, _, _):
             return side
         case .note(let value) where value.hasPrefix("kickoff:"):
             return MatchSide(rawValue: String(value.dropFirst("kickoff:".count)))
@@ -918,9 +918,9 @@ struct LiveMatchView: View {
 
     private func eventShortDescription(_ event: MatchEvent) -> String {
         switch event.payload {
-        case .goal(_, let scorer):
+        case .goal(_, let scorer, let goalType):
             if let scorer { return personShortLabel(scorer) }
-            return "Gol"
+            return GoalTypeLabel.title(goalType)
         case .card(let kind, _, let person, _):
             let prefix = kind == .yellow ? "Sarı" : kind == .red ? "Kırmızı" : "Ceza"
             return "\(prefix) \(personShortLabel(person))"
@@ -947,8 +947,8 @@ struct LiveMatchView: View {
 
     private func eventDescription(_ event: MatchEvent) -> String {
         switch event.payload {
-        case .goal(_, let scorer):
-            return "Gol · \(personLabel(scorer))"
+        case .goal(_, let scorer, let goalType):
+            return "\(GoalTypeLabel.title(goalType)) · \(personLabel(scorer))"
         case .card(let kind, _, let person, _):
             let card = kind == .yellow ? "Sarı kart" : kind == .red ? "Kırmızı kart" : "Geçici ihraç"
             return "\(card) · \(personLabel(person))"

@@ -6,6 +6,28 @@ enum FieldAction: String, Identifiable {
     var id: String { rawValue }
 }
 
+/// Turkish labels for goal types, shared by the entry screen and the event list.
+enum GoalTypeLabel {
+    static func choice(_ type: GoalType?) -> String {
+        switch type {
+        case .foot: return "Ayakla"
+        case .header: return "Kafa"
+        case .penalty: return "Penaltı"
+        case .ownGoal: return "Kendi kalesine"
+        case nil: return "Belirtme"
+        }
+    }
+
+    /// "Gol (Kafa)", "Gol (K.K.)", or plain "Gol" when no type was chosen.
+    static func title(_ type: GoalType?) -> String {
+        switch type {
+        case nil: return "Gol"
+        case .ownGoal: return "Gol (K.K.)"
+        default: return "Gol (\(choice(type)))"
+        }
+    }
+}
+
 struct PendingFieldAction: Identifiable {
     let id = UUID()
     let action: FieldAction
@@ -37,6 +59,8 @@ struct EventEntryView: View {
     @State private var manualIn = ""
     @State private var cardReason = ""
     @State private var confirmSecondYellow = false
+    @State private var goalType: GoalType?
+    @State private var goalTypeChosen = false
 
     private var actionColor: Color {
         switch pending.action {
@@ -63,6 +87,8 @@ struct EventEntryView: View {
 
                 if side == nil {
                     teamSelection
+                } else if pending.action == .goal && !goalTypeChosen {
+                    goalTypeSelection
                 } else if pending.action == .substitution {
                     substitutionForm
                 } else {
@@ -257,6 +283,47 @@ struct EventEntryView: View {
         .disabled(selectedPerson == nil || (isCard && cardReason.isEmpty))
     }
 
+    /// Asked right after the team, before the scorer: an own goal lists the other team.
+    private var goalTypeSelection: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                goalTypeTile(.foot)
+                goalTypeTile(.header)
+            }
+            HStack(spacing: 6) {
+                goalTypeTile(.penalty)
+                goalTypeTile(.ownGoal)
+            }
+            goalTypeTile(nil)
+        }
+    }
+
+    private func goalTypeTile(_ type: GoalType?) -> some View {
+        let color: Color = type == nil ? .gray : .green
+        return Button {
+            chooseGoalType(type)
+        } label: {
+            Text(GoalTypeLabel.choice(type))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(color.opacity(0.18))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(color.opacity(0.38), lineWidth: 1))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func chooseGoalType(_ type: GoalType?) {
+        goalType = type
+        goalTypeChosen = true
+        selectedPlayerID = activePlayers.first?.id ?? ""
+    }
+
     private var teamSelection: some View {
         VStack(spacing: 6) {
             Button {
@@ -323,14 +390,21 @@ struct EventEntryView: View {
         }
     }
 
+    /// The team whose players are listed: the other team for an own goal.
+    private var listSide: MatchSide? {
+        guard let side else { return nil }
+        guard pending.action == .goal, goalType == .ownGoal else { return side }
+        return side == .home ? .away : .home
+    }
+
     private var players: [WatchRosterPlayer] {
-        guard let side else { return [] }
-        return model.rosterPlayers(for: side)
+        guard let listSide else { return [] }
+        return model.rosterPlayers(for: listSide)
     }
 
     private var activePlayers: [WatchRosterPlayer] {
-        guard let side else { return [] }
-        return model.activePlayers(for: side)
+        guard let listSide else { return [] }
+        return model.activePlayers(for: listSide)
     }
 
     private var benchPlayers: [WatchRosterPlayer] {
@@ -374,7 +448,7 @@ struct EventEntryView: View {
 
     private func saveGoal() {
         guard let side, let person = selectedPerson else { return }
-        model.addGoal(side: side, scorer: person, at: pending.occurredAt)
+        model.addGoal(side: side, scorer: person, goalType: goalType, at: pending.occurredAt)
         dismiss()
     }
 
@@ -430,7 +504,7 @@ struct EventEntryView: View {
 
     private var title: String {
         switch pending.action {
-        case .goal: return "Gol"
+        case .goal: return goalTypeChosen ? GoalTypeLabel.title(goalType) : "Gol"
         case .yellowCard: return "Sarı Kart"
         case .redCard: return "Kırmızı Kart"
         case .substitution: return "Değişiklik"

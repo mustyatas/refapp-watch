@@ -4,6 +4,8 @@ public enum MatchSide: String, Codable, Sendable { case home, away }
 public enum PersonRole: String, Codable, Sendable { case player, staff }
 public enum MatchPeriod: String, Codable, Sendable { case firstHalf = "1h", halfTime = "ht", secondHalf = "2h", extraTimeFirst = "et1", extraTimeBreak = "et_ht", extraTimeSecond = "et2", penalties = "pens" }
 public enum CardKind: String, Codable, Sendable { case yellow, red, sinBin = "sin_bin" }
+/// How a goal was scored. `nil` on a goal means the referee skipped the choice.
+public enum GoalType: String, Codable, CaseIterable, Sendable { case foot, header, penalty, ownGoal = "own_goal" }
 
 public struct PersonReference: Codable, Equatable, Sendable {
     public let number: Int?
@@ -23,7 +25,8 @@ public enum MatchEventPayload: Codable, Equatable, Sendable {
     case clockPaused(reason: String?)
     case clockResumed
     case card(CardKind, side: MatchSide, person: PersonReference, reason: String?)
-    case goal(side: MatchSide, scorer: PersonReference?)
+    /// `side` is the team that gets the point, also for an own goal.
+    case goal(side: MatchSide, scorer: PersonReference?, goalType: GoalType? = nil)
     case substitution(side: MatchSide, playerOut: PersonReference, playerIn: PersonReference)
     case note(String)
     case eventRetracted(targetID: UUID)

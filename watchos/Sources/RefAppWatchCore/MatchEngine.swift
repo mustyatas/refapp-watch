@@ -41,7 +41,7 @@ public enum MatchEngine {
 
     public static func score(from events: [MatchEvent]) -> MatchScore {
         activeEvents(events).reduce(into: MatchScore()) { result, event in
-            guard case .goal(let side, _) = event.payload else { return }
+            guard case .goal(let side, _, _) = event.payload else { return }
             if side == .home { result.home += 1 } else { result.away += 1 }
         }
     }

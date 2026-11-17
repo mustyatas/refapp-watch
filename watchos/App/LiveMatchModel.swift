@@ -216,8 +216,8 @@ final class LiveMatchModel {
         }.first
     }
 
-    func addGoal(side: MatchSide, scorer: PersonReference?, at date: Date) {
-        append(.goal(side: side, scorer: scorer), at: date)
+    func addGoal(side: MatchSide, scorer: PersonReference?, goalType: GoalType?, at date: Date) {
+        append(.goal(side: side, scorer: scorer, goalType: goalType), at: date)
     }
 
     func yellowCardCount(side: MatchSide, person: PersonReference) -> Int {

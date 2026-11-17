@@ -67,3 +67,17 @@ private func event(_ payload: MatchEventPayload, seconds: TimeInterval, id: UUID
     let state = MatchEngine.clock(from: events, format: .regulation, now: kickoff.addingTimeInterval(72 * 60))
     #expect(state.displayTime == 55 * 60)
 }
+
+@Test func goalTypeRoundTripsAndOldGoalsStillDecode() throws {
+    let encoded = try JSONEncoder().encode(MatchEventPayload.goal(side: .home, scorer: nil, goalType: .header))
+    #expect(String(decoding: encoded, as: UTF8.self).contains("\"goalType\":\"header\""))
+
+    let skipped = try JSONEncoder().encode(MatchEventPayload.goal(side: .home, scorer: nil, goalType: nil))
+    #expect(!String(decoding: skipped, as: UTF8.self).contains("goalType"))
+
+    let old = try JSONDecoder().decode(MatchEventPayload.self, from: Data(#"{"goal":{"side":"home"}}"#.utf8))
+    #expect(old == .goal(side: .home, scorer: nil, goalType: nil))
+
+    let ownGoal = event(.goal(side: .away, scorer: PersonReference(number: 4, role: .player), goalType: .ownGoal), seconds: 60)
+    #expect(MatchEngine.score(from: [ownGoal]) == MatchScore(home: 0, away: 1))
+}
