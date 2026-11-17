@@ -20,6 +20,8 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
     private var lastQueuedFingerprint: String?
     /// Told when the phone acknowledged a batch, so track chunks can be dropped.
     var batchAcknowledged: @MainActor (String) -> Void = { _ in }
+    /// Told when the session becomes usable, so raw batches dropped while it was not can go out.
+    var sessionActivated: @MainActor () -> Void = {}
 
     override init() {
         session = WCSession.isSupported() ? .default : nil
@@ -63,6 +65,7 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
         Task { @MainActor [weak self] in
             guard activationState == .activated, error == nil else { return }
             self?.flushPendingEvents()
+            self?.sessionActivated()
         }
     }
 

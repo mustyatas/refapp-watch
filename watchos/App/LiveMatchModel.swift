@@ -53,7 +53,11 @@ final class LiveMatchModel {
         tracker.heartRate = { [weak self] in self?.workout.heartRate ?? 0 }
         tracker.send = { [weak self] data in self?.syncCoordinator.sendRawBatch(data) }
         syncCoordinator.batchAcknowledged = { [weak self] batchID in self?.tracker.acknowledge(batchID: batchID) }
-        for data in tracker.pendingBatches() { syncCoordinator.sendRawBatch(data) }
+        // The session activates asynchronously; resending here would be dropped.
+        syncCoordinator.sessionActivated = { [weak self] in
+            guard let self else { return }
+            for data in self.tracker.pendingBatches() { self.syncCoordinator.sendRawBatch(data) }
+        }
         restoreMatchPackage()
         Task { await restore() }
     }
@@ -524,7 +528,7 @@ final class LiveMatchModel {
         guard let status = matchStatuses[package.match.id] else { return false }
         guard status.isSynced else { return false }
         if package.match.id == matchPackage?.match.id {
-            return events.isEmpty || status.isFinished
+            return !hasKickedOff || status.isFinished
         }
         return true
     }

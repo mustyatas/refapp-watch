@@ -42,7 +42,11 @@ final class MatchTrackRecorder: NSObject, CLLocationManagerDelegate {
 
     func start(matchID: UUID, deviceID: String) {
         guard isEnabled, !recording else { return }
-        if self.matchID != matchID.uuidString { open.removeAll(); lastTime = nil }
+        if self.matchID != matchID.uuidString {
+            // Points saved before the app was killed belong to this recording.
+            open = loadOpen(matchID: matchID.uuidString)
+            lastTime = open.last?.t
+        }
         self.matchID = matchID.uuidString
         self.deviceID = deviceID
         recording = true
@@ -83,6 +87,7 @@ final class MatchTrackRecorder: NSObject, CLLocationManagerDelegate {
             "track": ["seq": seq, "startedAt": first.t, "points": points],
         ]
         open.removeAll()
+        saveOpen()
         UserDefaults.standard.set(seq + 1, forKey: seqKey)
         guard let data = try? JSONSerialization.data(withJSONObject: batch) else { return }
         try? data.write(to: directory.appendingPathComponent("\(batchID).json"), options: .atomic)
@@ -97,6 +102,29 @@ final class MatchTrackRecorder: NSObject, CLLocationManagerDelegate {
 
     func acknowledge(batchID: String) {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent("\(batchID).json"))
+    }
+
+    private func openURL(matchID: String) -> URL {
+        directory.appendingPathComponent("open-\(matchID).txt")
+    }
+
+    /// Open points as one line per fix, written every 30 fixes so a killed app loses little.
+    private func saveOpen() {
+        guard let matchID else { return }
+        let text = open.map { point -> String in
+            let rate = point.hr.map { String($0) } ?? ""
+            return "\(point.t);\(point.lat);\(point.lon);\(rate)"
+        }.joined(separator: "\n")
+        try? text.write(to: openURL(matchID: matchID), atomically: true, encoding: .utf8)
+    }
+
+    private func loadOpen(matchID: String) -> [(t: Int64, lat: Double, lon: Double, hr: Int?)] {
+        guard let text = try? String(contentsOf: openURL(matchID: matchID), encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").compactMap { line -> (t: Int64, lat: Double, lon: Double, hr: Int?)? in
+            let parts = line.split(separator: ";", omittingEmptySubsequences: false)
+            guard parts.count == 4, let t = Int64(parts[0]), let lat = Double(parts[1]), let lon = Double(parts[2]) else { return nil }
+            return (t, lat, lon, Int(parts[3]))
+        }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -119,7 +147,7 @@ final class MatchTrackRecorder: NSObject, CLLocationManagerDelegate {
             lastTime = t
             let rate = heartRate()
             open.append((t, fix.lat, fix.lon, rate > 0 ? Int(rate.rounded()) : nil))
-            if open.count >= Self.chunkSize { closeChunk() }
+            if open.count >= Self.chunkSize { closeChunk() } else if open.count % 30 == 0 { saveOpen() }
         }
     }
 }
