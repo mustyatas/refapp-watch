@@ -73,6 +73,7 @@ final class LiveMatchModel {
 
     func clock(at date: Date) -> MatchClockState { MatchEngine.clock(from: events, format: format, now: date) }
     var score: MatchScore { MatchEngine.score(from: events) }
+    var shootoutScore: MatchScore { MatchEngine.shootoutScore(from: events) }
     var canSelectAnotherMatch: Bool {
         !hasKickedOff || (clock(at: Date()).isFinished && pendingSyncCount == 0)
     }
@@ -249,6 +250,10 @@ final class LiveMatchModel {
         append(.goal(side: side, scorer: scorer, goalType: goalType), at: date)
     }
 
+    func addShootoutGoal(side: MatchSide, at date: Date) {
+        append(.shootoutGoal(side: side), at: date)
+    }
+
     func yellowCardCount(side: MatchSide, person: PersonReference) -> Int {
         MatchEngine.activeEvents(events).filter { event in
             guard case .card(.yellow, let eventSide, let eventPerson, _) = event.payload else { return false }
@@ -357,7 +362,7 @@ final class LiveMatchModel {
 
     func undoLast(at date: Date) {
         guard let target = MatchEngine.activeEvents(events).last(where: { event in
-            switch event.payload { case .goal, .card, .substitution: true; default: false }
+            switch event.payload { case .goal, .shootoutGoal, .card, .substitution: true; default: false }
         }) else { return }
         append(.eventRetracted(targetID: target.id), at: date)
     }

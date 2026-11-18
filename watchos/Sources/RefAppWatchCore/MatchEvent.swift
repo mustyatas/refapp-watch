@@ -28,6 +28,8 @@ public enum MatchEventPayload: Codable, Equatable, Sendable {
     /// `side` is the team that gets the point, also for an own goal.
     case goal(side: MatchSide, scorer: PersonReference?, goalType: GoalType? = nil)
     case substitution(side: MatchSide, playerOut: PersonReference, playerIn: PersonReference)
+    /// A goal in the penalty shootout; never part of the match score.
+    case shootoutGoal(side: MatchSide)
     case note(String)
     case eventRetracted(targetID: UUID)
 }

@@ -46,6 +46,13 @@ public enum MatchEngine {
         }
     }
 
+    public static func shootoutScore(from events: [MatchEvent]) -> MatchScore {
+        activeEvents(events).reduce(into: MatchScore()) { result, event in
+            guard case .shootoutGoal(let side) = event.payload else { return }
+            if side == .home { result.home += 1 } else { result.away += 1 }
+        }
+    }
+
     public static func clock(from events: [MatchEvent], format: MatchFormat, now: Date) -> MatchClockState {
         var period: MatchPeriod = .firstHalf
         var finished = false

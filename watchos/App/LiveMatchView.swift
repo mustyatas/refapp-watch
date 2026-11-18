@@ -341,27 +341,43 @@ struct LiveMatchView: View {
     }
 
     private func modernScoreboardCard(clock: MatchClockState, homeTint: Color, awayTint: Color, compact: Bool) -> some View {
-        HStack(spacing: 5) {
-            teamScoreBox(
-                side: .home,
-                score: model.score.home,
-                tint: homeTint,
-                compact: compact
-            )
+        // During the shootout the boxes count shootout goals and a tap records one directly.
+        let shootout = clock.period == .penalties && !clock.isFinished
+        let shown = shootout ? model.shootoutScore : model.score
 
-            teamScoreBox(
-                side: .away,
-                score: model.score.away,
-                tint: awayTint,
-                compact: compact
-            )
+        return VStack(spacing: 2) {
+            if shootout {
+                Text("Maç \(model.score.home)-\(model.score.away)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 5) {
+                teamScoreBox(
+                    side: .home,
+                    score: shown.home,
+                    tint: homeTint,
+                    compact: compact,
+                    shootout: shootout
+                )
+
+                teamScoreBox(
+                    side: .away,
+                    score: shown.away,
+                    tint: awayTint,
+                    compact: compact,
+                    shootout: shootout
+                )
+            }
         }
         .padding(.horizontal, 1)
     }
 
-    private func teamScoreBox(side: MatchSide, score: Int, tint: Color, compact: Bool) -> some View {
+    private func teamScoreBox(side: MatchSide, score: Int, tint: Color, compact: Bool, shootout: Bool) -> some View {
         Button {
-            if eventsStarted {
+            if shootout {
+                model.addShootoutGoal(side: side, at: Date())
+                WKInterfaceDevice.current().play(.click)
+            } else if eventsStarted {
                 actionTeam = TeamActionSelection(side: side)
             } else {
                 kickoffSide = side
@@ -811,7 +827,7 @@ struct LiveMatchView: View {
 
     private func eventSide(_ event: MatchEvent) -> MatchSide? {
         switch event.payload {
-        case .goal(let side, _, _), .card(_, let side, _, _), .substitution(let side, _, _):
+        case .goal(let side, _, _), .card(_, let side, _, _), .substitution(let side, _, _), .shootoutGoal(let side):
             return side
         case .note(let value) where value.hasPrefix("kickoff:"):
             return MatchSide(rawValue: String(value.dropFirst("kickoff:".count)))
@@ -851,7 +867,7 @@ struct LiveMatchView: View {
     private var hasUndoableEvent: Bool {
         MatchEngine.activeEvents(model.events).contains { event in
             switch event.payload {
-            case .goal, .card, .substitution: true
+            case .goal, .shootoutGoal, .card, .substitution: true
             case .note(let value): value.hasPrefix("kickoff:")
             default: false
             }
@@ -890,7 +906,7 @@ struct LiveMatchView: View {
     private var matchEvents: [MatchEvent] {
         MatchEngine.activeEvents(model.events).filter { event in
             switch event.payload {
-            case .goal, .card, .substitution: true
+            case .goal, .shootoutGoal, .card, .substitution: true
             default: false
             }
         }
@@ -954,6 +970,7 @@ struct LiveMatchView: View {
             return "\(prefix) \(personShortLabel(person))"
         case .substitution(_, let playerOut, let playerIn):
             return "\(personShortLabel(playerOut))➔\(personShortLabel(playerIn))"
+        case .shootoutGoal: return "Penaltı golü"
         case .note(let value) where value.hasPrefix("kickoff:"): return "İlk vuruş"
         default: return ""
         }
@@ -982,6 +999,7 @@ struct LiveMatchView: View {
             return "\(card) · \(personLabel(person))"
         case .substitution(_, let playerOut, let playerIn):
             return "\(personLabel(playerOut)) → \(personLabel(playerIn))"
+        case .shootoutGoal(let side): return "Penaltı golü · \(model.teamLabel(side))"
         default: return ""
         }
     }
@@ -996,7 +1014,7 @@ struct LiveMatchView: View {
 
     private func eventIcon(_ event: MatchEvent) -> String {
         switch event.payload {
-        case .goal: "soccerball"
+        case .goal, .shootoutGoal: "soccerball"
         case .card: "rectangle.portrait.fill"
         case .substitution: "arrow.left.arrow.right"
         case .note(let value) where value.hasPrefix("kickoff:"): "figure.soccer"
@@ -1006,7 +1024,7 @@ struct LiveMatchView: View {
 
     private func eventColor(_ event: MatchEvent) -> Color {
         switch event.payload {
-        case .goal: .green
+        case .goal, .shootoutGoal: .green
         case .card(let kind, _, _, _): kind == .yellow ? .yellow : .red
         case .substitution: .blue
         case .note(let value) where value.hasPrefix("kickoff:"): .green

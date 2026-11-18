@@ -82,6 +82,21 @@ private func event(_ payload: MatchEventPayload, seconds: TimeInterval, id: UUID
     #expect(MatchEngine.score(from: [ownGoal]) == MatchScore(home: 0, away: 1))
 }
 
+@Test func shootoutGoalsEncodeInWireShapeAndCountApartFromTheScore() throws {
+    let encoded = try JSONEncoder().encode(MatchEventPayload.shootoutGoal(side: .home))
+    #expect(String(decoding: encoded, as: UTF8.self) == #"{"shootoutGoal":{"side":"home"}}"#)
+
+    let undoneID = UUID()
+    let events = [
+        event(.shootoutGoal(side: .home), seconds: 7300),
+        event(.shootoutGoal(side: .away), seconds: 7360),
+        event(.shootoutGoal(side: .home), seconds: 7420, id: undoneID),
+        event(.eventRetracted(targetID: undoneID), seconds: 7430),
+    ]
+    #expect(MatchEngine.score(from: events) == MatchScore())
+    #expect(MatchEngine.shootoutScore(from: events) == MatchScore(home: 1, away: 1))
+}
+
 private func running(_ period: MatchPeriod, _ display: TimeInterval, isRunning: Bool = true) -> MatchClockState {
     MatchClockState(period: period, isRunning: isRunning, isFinished: false, elapsedInPeriod: 0, displayTime: display, stoppage: 0)
 }
