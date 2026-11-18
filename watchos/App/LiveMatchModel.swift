@@ -62,7 +62,14 @@ final class LiveMatchModel {
         Task { await restore() }
     }
 
-    private var alertedBoundaries: Set<MatchPeriod> = []
+    /// Alerts already given, as "period/alert", so each fires once per period.
+    private var alertedBoundaries: Set<String> = []
+    /// Added time per match ID, kept on the watch only.
+    private var addedTimes: [String: AddedTime] = LiveMatchModel.loadAddedTimes()
+    /// Set when regular time is up, so the live screen asks for the added time.
+    var askAddedTime = false
+
+    var addedTime: AddedTime? { addedTimes[matchID.uuidString] }
 
     func clock(at date: Date) -> MatchClockState { MatchEngine.clock(from: events, format: format, now: date) }
     var score: MatchScore { MatchEngine.score(from: events) }
@@ -90,18 +97,40 @@ final class LiveMatchModel {
         if !tracker.isEnabled { tracker.stop() }
     }
 
+    /// Each alert has its own haptic so the referee can tell them apart without looking.
     func checkBoundaryAlert(for clock: MatchClockState) {
-        guard clock.isRunning else { return }
-        let boundary: TimeInterval? = switch clock.period {
-        case .firstHalf: 45 * 60
-        case .secondHalf: 90 * 60
-        case .extraTimeFirst: 105 * 60
-        case .extraTimeSecond: 120 * 60
-        default: nil
+        guard let alert = MatchAlerts.due(clock, addedTime) else { return }
+        let key = "\(clock.period.rawValue)/\(alert)"
+        guard !alertedBoundaries.contains(key) else { return }
+        alertedBoundaries.insert(key)
+        switch alert {
+        case .warning: WKInterfaceDevice.current().play(.directionUp)
+        case .regularEnd: WKInterfaceDevice.current().play(.notification)
+        case .addedTimeUp: WKInterfaceDevice.current().play(.stop)
         }
-        guard let boundary, clock.displayTime >= boundary, !alertedBoundaries.contains(clock.period) else { return }
-        alertedBoundaries.insert(clock.period)
-        WKInterfaceDevice.current().play(.notification)
+        // Called while the view renders; ask on the next turn of the run loop.
+        if alert == .regularEnd, MatchAlerts.current(clock, addedTime) == nil {
+            Task { @MainActor [weak self] in self?.askAddedTime = true }
+        }
+    }
+
+    /// Sets the added time for the period being played; nil clears it.
+    func setAddedTime(minutes: Int?, at date: Date) {
+        let key = matchID.uuidString
+        addedTimes[key] = minutes.map { AddedTime(period: clock(at: date).period, minutes: $0) }
+        Self.saveAddedTimes(addedTimes)
+    }
+
+    private static let addedTimesKey = "refapp.watch.added-times"
+
+    private static func loadAddedTimes() -> [String: AddedTime] {
+        guard let data = UserDefaults.standard.data(forKey: addedTimesKey),
+              let decoded = try? JSONDecoder().decode([String: AddedTime].self, from: data) else { return [:] }
+        return decoded
+    }
+
+    private static func saveAddedTimes(_ value: [String: AddedTime]) {
+        if let data = try? JSONEncoder().encode(value) { UserDefaults.standard.set(data, forKey: addedTimesKey) }
     }
 
     func teamLabel(_ side: MatchSide) -> String {
@@ -403,6 +432,9 @@ final class LiveMatchModel {
 
     func restartMatch() {
         tracker.stop()
+        alertedBoundaries.removeAll()
+        addedTimes[matchID.uuidString] = nil
+        Self.saveAddedTimes(addedTimes)
         finalSyncPresented = false
         finalSyncCompleted = false
         Task {

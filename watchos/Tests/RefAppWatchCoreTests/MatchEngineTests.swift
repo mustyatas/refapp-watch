@@ -81,3 +81,21 @@ private func event(_ payload: MatchEventPayload, seconds: TimeInterval, id: UUID
     let ownGoal = event(.goal(side: .away, scorer: PersonReference(number: 4, role: .player), goalType: .ownGoal), seconds: 60)
     #expect(MatchEngine.score(from: [ownGoal]) == MatchScore(home: 0, away: 1))
 }
+
+private func running(_ period: MatchPeriod, _ display: TimeInterval, isRunning: Bool = true) -> MatchClockState {
+    MatchClockState(period: period, isRunning: isRunning, isFinished: false, elapsedInPeriod: 0, displayTime: display, stoppage: 0)
+}
+
+@Test func alertsWarnEndAndCountDownAddedTime() {
+    #expect(MatchAlerts.due(running(.firstHalf, 42 * 60 + 59), nil) == nil)
+    #expect(MatchAlerts.due(running(.firstHalf, 43 * 60), nil) == .warning)
+    #expect(MatchAlerts.due(running(.secondHalf, 90 * 60), nil) == .regularEnd)
+    #expect(MatchAlerts.due(running(.firstHalf, 44 * 60, isRunning: false), nil) == nil)
+    #expect(MatchAlerts.due(running(.halfTime, 45 * 60), nil) == nil)
+
+    let added = AddedTime(period: .firstHalf, minutes: 3)
+    #expect(MatchAlerts.addedRemaining(running(.firstHalf, 45 * 60 + 30), added) == 150)
+    #expect(MatchAlerts.due(running(.firstHalf, 47 * 60), added) == .regularEnd)
+    #expect(MatchAlerts.due(running(.firstHalf, 48 * 60), added) == .addedTimeUp)
+    #expect(MatchAlerts.addedRemaining(running(.secondHalf, 91 * 60), added) == nil)
+}

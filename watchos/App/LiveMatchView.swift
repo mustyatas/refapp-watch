@@ -48,6 +48,11 @@ struct LiveMatchView: View {
                             model.restartMatch()
                         }
                     } else {
+                        if MatchAlerts.regularEnd(clock.period) != nil {
+                            Button(MatchAlerts.current(clock, model.addedTime).map { "Uzatma süresi: +\($0.minutes) dk" } ?? "Uzatma süresi") {
+                                model.askAddedTime = true
+                            }
+                        }
                         if clock.period == .firstHalf {
                             Button("İlk Yarıyı Bitir") {
                                 model.advancePeriod(at: Date())
@@ -82,6 +87,12 @@ struct LiveMatchView: View {
                     }
                     Button("Vazgeç", role: .cancel) {}
                 }
+            }
+        }
+        .sheet(isPresented: Binding(get: { model.askAddedTime }, set: { model.askAddedTime = $0 })) {
+            AddedTimePicker { minutes in
+                model.setAddedTime(minutes: minutes, at: Date())
+                model.askAddedTime = false
             }
         }
         .sheet(item: $actionTeam) { selection in
@@ -265,6 +276,16 @@ struct LiveMatchView: View {
         .padding(.horizontal, 2)
     }
 
+    /// "+3 · Kalan 2:31" once regular time is up and added time was set; nil otherwise.
+    private func addedTimeLine(clock: MatchClockState) -> (text: String, done: Bool)? {
+        guard let added = MatchAlerts.current(clock, model.addedTime),
+              let end = MatchAlerts.regularEnd(clock.period), clock.displayTime >= end,
+              let left = MatchAlerts.addedRemaining(clock, model.addedTime) else { return nil }
+        if left <= 0 { return ("+\(added.minutes) · Süre doldu", true) }
+        let seconds = Int(left.rounded(.up))
+        return (String(format: "+%d · Kalan %d:%02d", added.minutes, seconds / 60, seconds % 60), false)
+    }
+
     private func mainClockCard(clock: MatchClockState, now: Date, compact: Bool) -> some View {
         VStack(spacing: 3) {
             Button {
@@ -305,6 +326,13 @@ struct LiveMatchView: View {
                 }
             )
             .accessibilityLabel("Kayıp zaman kronometresini aç, uzun basarak devreyi ilerlet")
+
+            if let line = addedTimeLine(clock: clock) {
+                Text(line.text)
+                    .font(.system(size: compact ? 11 : 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(line.done ? Color.red : Color.orange)
+                    .monospacedDigit()
+            }
 
             if eventsStarted && !clock.isFinished && clock.period != .halfTime && clock.period != .extraTimeBreak && !isLuminanceReduced {
                 compactStoppageClock(at: now)
@@ -1206,5 +1234,34 @@ extension Color {
             green: Double((value >> 8) & 0xff) / 255,
             blue: Double(value & 0xff) / 255
         )
+    }
+}
+
+/// "Uzatma kaç dakika?" as a grid of 1-10 and a skip choice.
+private struct AddedTimePicker: View {
+    let onPick: (Int?) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 6) {
+                Text("Uzatma kaç dakika?")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+                    ForEach(MatchAlerts.addedMinutes, id: \.self) { minutes in
+                        Button { onPick(minutes) } label: {
+                            Text("+\(minutes)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .frame(maxWidth: .infinity, minHeight: 34)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.25)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Uzatma \(minutes) dakika")
+                    }
+                }
+                Button("Geç") { onPick(nil) }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+            }
+            .padding(.horizontal, 4)
+        }
     }
 }
