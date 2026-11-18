@@ -950,7 +950,7 @@ struct LiveMatchView: View {
         case .goal(_, let scorer, let goalType):
             return "\(GoalTypeLabel.title(goalType)) · \(personLabel(scorer))"
         case .card(let kind, _, let person, _):
-            let card = kind == .yellow ? "Sarı kart" : kind == .red ? "Kırmızı kart" : "Geçici ihraç"
+            let card = kind == .yellow ? "Sarı kart" : "Kırmızı kart"
             return "\(card) · \(personLabel(person))"
         case .substitution(_, let playerOut, let playerIn):
             return "\(personLabel(playerOut)) → \(personLabel(playerIn))"

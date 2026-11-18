@@ -3,7 +3,7 @@ import Foundation
 public enum MatchSide: String, Codable, Sendable { case home, away }
 public enum PersonRole: String, Codable, Sendable { case player, staff }
 public enum MatchPeriod: String, Codable, Sendable { case firstHalf = "1h", halfTime = "ht", secondHalf = "2h", extraTimeFirst = "et1", extraTimeBreak = "et_ht", extraTimeSecond = "et2", penalties = "pens" }
-public enum CardKind: String, Codable, Sendable { case yellow, red, sinBin = "sin_bin" }
+public enum CardKind: String, Codable, Sendable { case yellow, red }
 /// How a goal was scored. `nil` on a goal means the referee skipped the choice.
 public enum GoalType: String, Codable, CaseIterable, Sendable { case foot, header, penalty, ownGoal = "own_goal" }
 
