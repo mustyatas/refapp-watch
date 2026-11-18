@@ -96,7 +96,7 @@ struct LiveMatchView: View {
             }
         }
         .sheet(item: $actionTeam) { selection in
-            TeamActionMenu(side: selection.side, model: model)
+            TeamActionMenu(side: selection.side, model: model, shootout: selection.shootout)
         }
         .sheet(
             isPresented: Binding(
@@ -341,7 +341,8 @@ struct LiveMatchView: View {
     }
 
     private func modernScoreboardCard(clock: MatchClockState, homeTint: Color, awayTint: Color, compact: Bool) -> some View {
-        // During the shootout the boxes count shootout goals and a tap records one directly.
+        // During the shootout the boxes count shootout goals; a tap opens the team menu, where
+        // the goal entry records a shootout goal and cards stay available.
         let shootout = clock.period == .penalties && !clock.isFinished
         let shown = shootout ? model.shootoutScore : model.score
 
@@ -374,11 +375,8 @@ struct LiveMatchView: View {
 
     private func teamScoreBox(side: MatchSide, score: Int, tint: Color, compact: Bool, shootout: Bool) -> some View {
         Button {
-            if shootout {
-                model.addShootoutGoal(side: side, at: Date())
-                WKInterfaceDevice.current().play(.click)
-            } else if eventsStarted {
-                actionTeam = TeamActionSelection(side: side)
+            if eventsStarted {
+                actionTeam = TeamActionSelection(side: side, shootout: shootout)
             } else {
                 kickoffSide = side
             }
@@ -1152,12 +1150,15 @@ private struct AssignedMatchRow: View {
 private struct TeamActionSelection: Identifiable {
     let id = UUID()
     let side: MatchSide
+    /// During the shootout the goal entry records a shootout goal; cards stay available.
+    var shootout = false
 }
 
 private struct TeamActionMenu: View {
     @Environment(\.dismiss) private var dismiss
     let side: MatchSide
     let model: LiveMatchModel
+    var shootout = false
 
     private var tint: Color { Color(hex: model.teamColor(side)) ?? (side == .home ? .blue : .cyan) }
 
@@ -1187,7 +1188,11 @@ private struct TeamActionMenu: View {
                     }
 
                     HStack(spacing: 6) {
-                        entry(.goal, icon: "soccerball", label: "Gol", color: .green)
+                        if shootout {
+                            shootoutGoalEntry
+                        } else {
+                            entry(.goal, icon: "soccerball", label: "Gol", color: .green)
+                        }
                         entry(.substitution, icon: "arrow.left.arrow.right", label: "Değişiklik", color: .blue)
                     }
                 }
@@ -1202,6 +1207,35 @@ private struct TeamActionMenu: View {
                 for: .navigation
             )
         }
+    }
+
+    /// One tap records the shootout goal; there is no scorer or goal type to ask for.
+    private var shootoutGoalEntry: some View {
+        Button {
+            model.addShootoutGoal(side: side, at: Date())
+            WKInterfaceDevice.current().play(.click)
+            dismiss()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "soccerball")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(Color.green)
+                Text("Penaltı golü")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(
+                RoundedRectangle(cornerRadius: 15)
+                    .fill(Color.green.opacity(0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 15)
+                            .strokeBorder(Color.green.opacity(0.38), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(model.teamLabel(side)) penaltı golü")
     }
 
     private func entry(
