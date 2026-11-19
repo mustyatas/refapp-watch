@@ -162,7 +162,9 @@ final class LiveMatchModel {
     }
 
     func activePlayers(for side: MatchSide) -> [WatchRosterPlayer] {
-        var active = rosterPlayers(for: side).filter(\.isStarter)
+        // Without a starting eleven the whole squad may be on the pitch.
+        let squad = rosterPlayers(for: side)
+        var active = squad.contains(where: \.isStarter) ? squad.filter(\.isStarter) : squad
         var yellowCounts: [String: Int] = [:]
         for event in MatchEngine.activeEvents(events) {
             switch event.payload {
@@ -193,6 +195,10 @@ final class LiveMatchModel {
             guard case .substitution(let eventSide, _, let playerIn) = event.payload, eventSide == side else { return nil }
             return roster.first(where: { matches($0, playerIn) })?.id
         })
+        // Without a starting eleven anyone still on the list may come on, once.
+        guard roster.contains(where: \.isStarter) else {
+            return activePlayers(for: side).filter { !usedIncomingIDs.contains($0.id) }
+        }
         return roster.filter { !$0.isStarter && !activeIDs.contains($0.id) && !usedIncomingIDs.contains($0.id) }
     }
 
