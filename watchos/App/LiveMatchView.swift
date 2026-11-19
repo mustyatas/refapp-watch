@@ -967,11 +967,18 @@ struct LiveMatchView: View {
             let prefix = kind == .yellow ? "Sarı" : kind == .red ? "Kırmızı" : "Ceza"
             return "\(prefix) \(personShortLabel(person))"
         case .substitution(_, let playerOut, let playerIn):
-            return "\(personShortLabel(playerOut))➔\(personShortLabel(playerIn))"
+            return "\(substitutionLabel(playerOut))➔\(substitutionLabel(playerIn))"
         case .shootoutGoal: return "Penaltı golü"
         case .note(let value) where value.hasPrefix("kickoff:"): return "İlk vuruş"
         default: return ""
         }
+    }
+
+    /// A substitution row holds two people: the shirt number, or the first three letters of the name.
+    private func substitutionLabel(_ person: PersonReference) -> String {
+        if let number = person.number { return "\(number)" }
+        if let name = person.name?.trimmingCharacters(in: .whitespaces), !name.isEmpty { return String(name.prefix(3)) }
+        return "?"
     }
 
     private func personShortLabel(_ person: PersonReference?) -> String {
