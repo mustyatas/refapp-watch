@@ -88,3 +88,14 @@ private func syncEvent(id: UUID = UUID(), seconds: TimeInterval) -> MatchEvent {
 
     #expect(decoded == package)
 }
+
+@Test func followModeArrivesInThePackageAndOldPackagesStillRunTheMatch() throws {
+    func package(_ mode: String?) throws -> WatchMatchPackage {
+        let modeField = mode.map { #""mode":"\#($0)","# } ?? ""
+        let json = #"{"schemaVersion":1,\#(modeField)"match":{"id":"00000000-0000-0000-0000-000000000001","homeTeamName":"A","awayTeamName":"B","format":"90","scheduledAt":"2026-11-20T15:00:00Z"},"roster":[],"staff":[]}"#
+        return try JSONDecoder().decode(WatchMatchPackage.self, from: Data(json.utf8))
+    }
+    #expect(try package("follow").following)
+    #expect(try !package(nil).following)
+    #expect(try !package("run").following)
+}

@@ -376,7 +376,8 @@ struct LiveMatchView: View {
     private func teamScoreBox(side: MatchSide, score: Int, tint: Color, compact: Bool, shootout: Bool) -> some View {
         Button {
             if eventsStarted {
-                actionTeam = TeamActionSelection(side: side, shootout: shootout)
+                // Follow mode: entries belong to the referee, so a team tap opens nothing.
+                if !model.following { actionTeam = TeamActionSelection(side: side, shootout: shootout) }
             } else {
                 kickoffSide = side
             }
@@ -551,7 +552,7 @@ struct LiveMatchView: View {
 
     private func periodBadgeText(_ clock: MatchClockState) -> String {
         if clock.isFinished { return "BİTTİ" }
-        return periodLabel(clock.period)
+        return model.following ? "\(periodLabel(clock.period)) · TAKİP" : periodLabel(clock.period)
     }
 
     private var history: some View {

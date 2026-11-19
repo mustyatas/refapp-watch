@@ -19,6 +19,8 @@ final class LiveMatchModel {
     private(set) var errorMessage: String?
     private(set) var pendingSyncCount = 0
     private(set) var matchPackage: WatchMatchPackage?
+    /// A crew member's watch: it times their own run; the referee enters the events.
+    var following: Bool { matchPackage?.following == true }
     private(set) var assignedMatches: [WatchMatchPackage] = []
     private(set) var matchStatuses: [String: AssignedMatchStatus] = [:]
     private(set) var finalSyncPresented = false

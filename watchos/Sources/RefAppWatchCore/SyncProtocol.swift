@@ -64,6 +64,11 @@ public struct WatchMatchPackage: Codable, Equatable, Sendable {
     public let match: WatchMatch
     public let roster: [WatchRosterPlayer]
     public let staff: [WatchStaffMember]
+    /// "follow" on a crew member's watch: it times their own run and offers no event entry.
+    /// Absent on packages from older phones, which run the match.
+    public var mode: String? = nil
+
+    public var following: Bool { mode == "follow" }
 }
 
 public struct EventBatch: Codable, Equatable, Sendable {
