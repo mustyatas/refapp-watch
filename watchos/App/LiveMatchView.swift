@@ -1183,8 +1183,8 @@ private struct TeamActionMenu: View {
 
                 VStack(spacing: 6) {
                     HStack(spacing: 6) {
-                        entry(.yellowCard, icon: "rectangle.portrait.fill", label: "Sarı Kart", color: .yellow)
-                        entry(.redCard, icon: "rectangle.portrait.fill", label: "Kırmızı Kart", color: .red)
+                        entry(.yellowCard, icon: "rectangle.portrait.fill", label: "Sarı Kart", color: .yellow, solidInk: .black)
+                        entry(.redCard, icon: "rectangle.portrait.fill", label: "Kırmızı Kart", color: .red, solidInk: .white)
                     }
 
                     HStack(spacing: 6) {
@@ -1242,7 +1242,9 @@ private struct TeamActionMenu: View {
         _ action: FieldAction,
         icon: String,
         label: String,
-        color: Color
+        color: Color,
+        // Set for cards: filled in their full colour so they read like the real card.
+        solidInk: Color? = nil
     ) -> some View {
         NavigationLink {
             EventEntryView(
@@ -1254,19 +1256,19 @@ private struct TeamActionMenu: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 21, weight: .bold))
-                    .foregroundStyle(color)
-                    .shadow(color: color.opacity(0.6), radius: 4)
+                    .foregroundStyle(solidInk ?? color)
+                    .shadow(color: solidInk == nil ? color.opacity(0.6) : .clear, radius: 4)
                 Text(label)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(solidInk ?? .white)
             }
             .frame(maxWidth: .infinity, minHeight: 56)
             .background(
                 RoundedRectangle(cornerRadius: 15)
-                    .fill(color.opacity(0.18))
+                    .fill(solidInk == nil ? color.opacity(0.18) : color)
                     .overlay(
                         RoundedRectangle(cornerRadius: 15)
-                            .strokeBorder(color.opacity(0.38), lineWidth: 1)
+                            .strokeBorder(solidInk == nil ? color.opacity(0.38) : color, lineWidth: 1)
                     )
             )
         }
