@@ -376,8 +376,7 @@ struct LiveMatchView: View {
     private func teamScoreBox(side: MatchSide, score: Int, tint: Color, compact: Bool, shootout: Bool) -> some View {
         Button {
             if eventsStarted {
-                // Follow mode: entries belong to the referee, so a team tap opens nothing.
-                if !model.following { actionTeam = TeamActionSelection(side: side, shootout: shootout) }
+                actionTeam = TeamActionSelection(side: side, shootout: shootout)
             } else {
                 kickoffSide = side
             }

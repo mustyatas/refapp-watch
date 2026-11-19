@@ -64,7 +64,7 @@ public struct WatchMatchPackage: Codable, Equatable, Sendable {
     public let match: WatchMatch
     public let roster: [WatchRosterPlayer]
     public let staff: [WatchStaffMember]
-    /// "follow" on a crew member's watch: it times their own run and offers no event entry.
+    /// "follow" on a crew member's watch: their entries are a check record, not the match's record.
     /// Absent on packages from older phones, which run the match.
     public var mode: String? = nil
 
