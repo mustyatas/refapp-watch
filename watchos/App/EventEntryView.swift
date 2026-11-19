@@ -409,7 +409,8 @@ struct EventEntryView: View {
 
     private var benchPlayers: [WatchRosterPlayer] {
         guard let side else { return [] }
-        return model.benchPlayers(for: side)
+        // The player going off cannot also come on (a squad without a starting eleven lists everyone).
+        return model.benchPlayers(for: side).filter { $0.id != playerOutID }
     }
 
     private var staffMembers: [WatchStaffMember] {
@@ -442,7 +443,7 @@ struct EventEntryView: View {
         let bench = model.benchPlayers(for: selectedSide)
         selectedPlayerID = active.first?.id ?? ""
         playerOutID = active.first?.id ?? ""
-        playerInID = bench.first?.id ?? ""
+        playerInID = bench.first(where: { $0.id != playerOutID })?.id ?? ""
         staffName = model.staffMembers(for: selectedSide).first?.name ?? ""
     }
 
