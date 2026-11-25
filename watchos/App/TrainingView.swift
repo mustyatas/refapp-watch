@@ -7,7 +7,7 @@ struct TrainingView: View {
     let model: LiveMatchModel
 
     var body: some View {
-        NavigationStack {
+        Group {
             List {
                 NavigationLink("Cooper testi") { CooperSetupView(model: model) }
                 NavigationLink("FIFA aralık") { IntervalRunView(model: model, run: 15, rest: 18, reps: 40) }
@@ -256,16 +256,22 @@ private struct SprintSetupView: View {
     let test: String
     let name: String
 
+    @State private var reps = 0
+    @State private var rest = 60
+
     var body: some View {
         List {
+            Stepper("Tekrar: \(reps)", value: $reps, in: 1...20)
+            Stepper("Dinlenme: \(rest) sn", value: $rest, in: 15...300, step: 5)
             ForEach([("klasman", "Klasman"), ("ust", "Üst klasman")], id: \.0) { level, label in
                 let limit = Fitness.sprintLimit(test: test, level: level)
                 NavigationLink("\(label) \(secondsText(limit)) sn") {
-                    SprintDrillView(model: model, test: test, name: name, limit: limit)
+                    SprintDrillView(model: model, test: test, name: name, limit: limit, reps: reps, restSeconds: Double(rest))
                 }
             }
         }
         .navigationTitle("Baraj")
+        .onAppear { if reps == 0 { reps = test == "coda" ? 3 : 6 } }
     }
 }
 
@@ -276,6 +282,8 @@ private struct SprintDrillView: View {
     let test: String
     let name: String
     let limit: Double
+    let reps: Int
+    let restSeconds: Double
     @Environment(\.dismiss) private var dismiss
     @State private var times: [Double?] = []
     @State private var phase = "ready"
@@ -284,8 +292,6 @@ private struct SprintDrillView: View {
     @State private var done = false
     @State private var confirmStop = false
 
-    private var reps: Int { test == "coda" ? 3 : 6 }
-    private let restSeconds = 60.0
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.05)) { context in
