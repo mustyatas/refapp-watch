@@ -9,6 +9,17 @@ public enum Fitness {
     /// How far behind the even pace the runner may fall before the watch alerts.
     public static let paceToleranceMeters = 50.0
 
+    /// TFF upper time limits for the timed drills, by test and level ("klasman" or "ust").
+    private static let sprintLimits: [String: [String: Double]] = [
+        "sprint40": ["klasman": 6.1, "ust": 6.0],
+        "sprint30": ["klasman": 4.8, "ust": 4.6],
+        "coda": ["klasman": 10.1, "ust": 9.8],
+    ]
+
+    public static func sprintLimit(test: String, level: String) -> Double {
+        sprintLimits[test]![level]!
+    }
+
     public enum PaceAlert: String, Sendable { case behind, recovered }
 
     /// Meters ahead (positive) or behind (negative) the even pace that reaches the target at 12:00.

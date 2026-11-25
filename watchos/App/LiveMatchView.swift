@@ -33,6 +33,11 @@ struct LiveMatchView: View {
                     if model.assignedMatches.count > 1 {
                         assignedMatchesView.tag(1)
                     }
+
+                    // Training records its own workout, so it waits while a match is being played.
+                    if !model.hasKickedOff || clock.isFinished {
+                        TrainingView(model: model).tag(2)
+                    }
                 }
                 .tabViewStyle(.page)
                 .confirmationDialog(

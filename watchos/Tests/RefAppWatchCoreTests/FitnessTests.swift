@@ -51,3 +51,10 @@ private func fitnessVectors() throws -> [String: Any] {
     #expect((fitness["recordedAt"] as? NSNumber)?.int64Value == 1_764_000_000_000)
     #expect((fitness["detail"] as? [String: Any])?["corrected"] as? Bool == true)
 }
+
+@Test func sprintLimitsMatchTheVectors() throws {
+    for item in try #require(try fitnessVectors()["sprintLimits"] as? [[String: Any]]) {
+        let limit = Fitness.sprintLimit(test: item["test"] as! String, level: item["level"] as! String)
+        #expect(abs(limit - (item["limit"] as! NSNumber).doubleValue) < 1e-9)
+    }
+}

@@ -140,6 +140,15 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
         ])
     }
 
+    /// Sends a finished training session; it stays on the watch until acknowledged.
+    func sendFitnessSession(_ data: Data) {
+        guard let session, session.activationState == .activated else { return }
+        session.transferUserInfo([
+            Key.kind: SyncMessageKind.fitnessSession.rawValue,
+            Key.payload: data,
+        ])
+    }
+
     private func sendAcknowledgement(for batch: EventBatch) {
         guard let session, session.activationState == .activated else { return }
         let acknowledgement = SyncAcknowledgement(

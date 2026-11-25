@@ -30,6 +30,7 @@ final class LiveMatchModel {
     private(set) var format: MatchFormat = .regulation
     let workout = WorkoutTrackingManager()
     let tracker = MatchTrackRecorder()
+    let training = TrainingStore()
 
     private var store: EventStore
     private let syncCoordinator: WatchSyncCoordinator
@@ -54,11 +55,16 @@ final class LiveMatchModel {
         syncCoordinator.start()
         tracker.heartRate = { [weak self] in self?.workout.heartRate ?? 0 }
         tracker.send = { [weak self] data in self?.syncCoordinator.sendRawBatch(data) }
-        syncCoordinator.batchAcknowledged = { [weak self] batchID in self?.tracker.acknowledge(batchID: batchID) }
+        training.send = { [weak self] data in self?.syncCoordinator.sendFitnessSession(data) }
+        syncCoordinator.batchAcknowledged = { [weak self] batchID in
+            self?.tracker.acknowledge(batchID: batchID)
+            self?.training.acknowledge(id: batchID)
+        }
         // The session activates asynchronously; resending here would be dropped.
         syncCoordinator.sessionActivated = { [weak self] in
             guard let self else { return }
             for data in self.tracker.pendingBatches() { self.syncCoordinator.sendRawBatch(data) }
+            for data in self.training.pendingSessions() { self.syncCoordinator.sendFitnessSession(data) }
         }
         restoreMatchPackage()
         Task { await restore() }
