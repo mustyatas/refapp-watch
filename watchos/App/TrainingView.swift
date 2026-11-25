@@ -1,3 +1,4 @@
+import RefAppWatchCore
 import SwiftUI
 import WatchKit
 
@@ -181,6 +182,7 @@ private struct IntervalRunView: View {
     let reps: Int
     @Environment(\.dismiss) private var dismiss
     @State private var startedAt = Date()
+    @State private var workout = WorkoutTrackingManager()
     @State private var lastRunning: Bool?
     @State private var done = false
     @State private var confirmStop = false
@@ -209,6 +211,8 @@ private struct IntervalRunView: View {
             Button("Vazgeç", role: .cancel) {}
         }
         .onAppear { startedAt = Date() }
+        // A workout keeps the app in front and ticking with the wrist down.
+        .task { await workout.start(at: Date(), activity: .running) }
     }
 
     /// A repetition counts once its run is over.
@@ -236,6 +240,7 @@ private struct IntervalRunView: View {
             let detail: [String: Any] = ["runSec": run, "restSec": rest, "repsPlanned": reps, "repsDone": repsDone]
             model.training.save(test: "interval", value: Double(repsDone), detail: detail, deviceID: model.deviceID, at: Date())
         }
+        Task { await workout.finish(at: Date()) }
         dismiss()
     }
 }
@@ -275,6 +280,7 @@ private struct SprintDrillView: View {
     @State private var times: [Double?] = []
     @State private var phase = "ready"
     @State private var phaseStartedAt = Date()
+    @State private var workout = WorkoutTrackingManager()
     @State private var done = false
     @State private var confirmStop = false
 
@@ -317,6 +323,10 @@ private struct SprintDrillView: View {
             Button("Evet") { finish() }
             Button("Vazgeç", role: .cancel) {}
         }
+        // The countdown starts when the screen shows, not when its link was built.
+        .onAppear { phaseStartedAt = Date() }
+        // A workout keeps the screen awake, so the tap at the line is not spent waking it.
+        .task { await workout.start(at: Date(), activity: .running) }
     }
 
     private func tick(inPhase: TimeInterval) {
@@ -358,6 +368,7 @@ private struct SprintDrillView: View {
             ]
             model.training.save(test: test, value: best, detail: detail, deviceID: model.deviceID, at: Date())
         }
+        Task { await workout.finish(at: Date()) }
         dismiss()
     }
 }

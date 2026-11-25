@@ -1,4 +1,5 @@
 import Foundation
+import RefAppWatchCore
 
 /// Finished training sessions waiting for the phone (docs/watch-protocol/README.md, section 8).
 /// Each is a file until the phone acknowledges it, like the GPS track chunks.
