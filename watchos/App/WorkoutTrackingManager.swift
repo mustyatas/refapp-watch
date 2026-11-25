@@ -38,11 +38,12 @@ final class WorkoutTrackingManager: NSObject {
         }
     }
 
-    func start(at date: Date) async {
+    /// `.soccer` for a match; the training section records `.running`.
+    func start(at date: Date, activity: HKWorkoutActivityType = .soccer) async {
         guard !isActive else { resume() ; return }
         guard await requestAuthorization() else { return }
         let configuration = HKWorkoutConfiguration()
-        configuration.activityType = .soccer
+        configuration.activityType = activity
         configuration.locationType = .outdoor
         do {
             let session = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)

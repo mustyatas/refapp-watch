@@ -126,7 +126,7 @@ final class WatchSyncCoordinator: NSObject, @preconcurrency WCSessionDelegate {
                   package.schemaVersion == WatchMatchPackage.currentSchemaVersion else { return }
             matchPackageHandler(package)
 
-        case nil:
+        case .fitnessSession, nil:
             return
         }
     }

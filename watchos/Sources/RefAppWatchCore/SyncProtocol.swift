@@ -4,6 +4,7 @@ public enum SyncMessageKind: String, Codable, Sendable {
     case eventBatch = "event_batch"
     case acknowledgement
     case matchPackage = "match_package"
+    case fitnessSession = "fitness_session"
 }
 
 public struct WatchMatch: Codable, Equatable, Sendable {
