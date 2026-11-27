@@ -122,8 +122,8 @@ private struct CooperResultView: View {
         ScrollView {
             VStack(spacing: 8) {
                 if correcting {
-                    Stepper("Tam tur: \(laps)", value: $laps, in: 1...20)
-                    Stepper("Son tur: \(extra) m", value: $extra, in: 0...390, step: 10)
+                    CompactStepper(label: "Tam tur: \(laps)", value: $laps, range: 1...20)
+                    CompactStepper(label: "Son tur: \(extra) m", value: $extra, range: 0...390, step: 10)
                     if let corrected = Fitness.correctedCooperMeters(laps: Double(laps), extraMeters: Double(extra)) {
                         Text("Toplam: \(corrected) m").font(.headline).foregroundStyle(.green)
                         Button("Kaydet") { save(meters: corrected, corrected: true) }
@@ -165,9 +165,9 @@ private struct IntervalSetupView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 6) {
-                Stepper("Koşu: \(run) sn", value: $run, in: 5...300)
-                Stepper("Dinlenme: \(rest) sn", value: $rest, in: 5...300)
-                Stepper("Tekrar: \(reps)", value: $reps, in: 1...99)
+                CompactStepper(label: "Koşu: \(run) sn", value: $run, range: 5...300)
+                CompactStepper(label: "Dinlenme: \(rest) sn", value: $rest, range: 5...300)
+                CompactStepper(label: "Tekrar: \(reps)", value: $reps, range: 1...99)
                 NavigationLink("Başlat") { IntervalRunView(model: model, run: run, rest: rest, reps: reps) }
             }
         }
@@ -261,8 +261,8 @@ private struct SprintSetupView: View {
 
     var body: some View {
         List {
-            Stepper("Tekrar: \(reps)", value: $reps, in: 1...20)
-            Stepper("Dinlenme: \(rest) sn", value: $rest, in: 15...300, step: 5)
+            CompactStepper(label: "Tekrar: \(reps)", value: $reps, range: 1...20)
+            CompactStepper(label: "Dinlenme: \(rest) sn", value: $rest, range: 15...300, step: 5)
             ForEach([("klasman", "Klasman"), ("ust", "Üst klasman")], id: \.0) { level, label in
                 let limit = Fitness.sprintLimit(test: test, level: level)
                 NavigationLink("\(label) \(secondsText(limit)) sn") {
@@ -376,5 +376,25 @@ private struct SprintDrillView: View {
         }
         Task { await workout.finish(at: Date()) }
         dismiss()
+    }
+}
+
+/// The system Stepper sets its label large between the buttons and breaks it letter by letter
+/// on a small watch; this keeps the label on one small line with the buttons beside it.
+struct CompactStepper: View {
+    let label: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var step = 1
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button { value = max(range.lowerBound, value - step) } label: { Image(systemName: "minus") }
+                .frame(width: 36).disabled(value <= range.lowerBound)
+            Text(label).font(.footnote).lineLimit(1).minimumScaleFactor(0.6).frame(maxWidth: .infinity)
+            Button { value = min(range.upperBound, value + step) } label: { Image(systemName: "plus") }
+                .frame(width: 36).disabled(value >= range.upperBound)
+        }
+        .buttonStyle(.bordered)
     }
 }
