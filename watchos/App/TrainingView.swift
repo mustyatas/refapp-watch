@@ -62,8 +62,8 @@ private struct CooperRunView: View {
                     let delta = Int(Fitness.cooperDelta(targetMeters: target, elapsedSeconds: elapsed, meters: workout.distanceMeters))
                     VStack(spacing: 4) {
                         Text(String(format: "%d:%02d", left / 60, left % 60))
-                            .font(.system(size: 40, weight: .bold, design: .rounded)).monospacedDigit()
-                        Text("\(Int(workout.distanceMeters)) m").font(.title3).foregroundStyle(.green)
+                            .font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit()
+                        Text("\(Int(workout.distanceMeters)) m").font(.headline).foregroundStyle(.green)
                         Text(delta >= 0 ? "Tempo: +\(delta) m" : "Tempo: \(delta) m")
                             .font(.footnote).foregroundStyle(behind ? .red : .secondary)
                         Text("Baraj \(target) m").font(.caption2).foregroundStyle(.secondary)
@@ -130,7 +130,7 @@ private struct CooperResultView: View {
                     }
                     Button("Vazgeç") { correcting = false }
                 } else {
-                    Text("GPS: \(gpsMeters) m").font(.title3)
+                    Text("GPS: \(gpsMeters) m").font(.headline)
                     Text(gpsMeters >= target ? "Baraj geçildi (\(target) m)" : "Baraj: \(target) m")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("Kaydet") { save(meters: gpsMeters, corrected: false) }
@@ -198,8 +198,8 @@ private struct IntervalRunView: View {
             let running = inCycle < Double(run)
             let left = Int(((running ? Double(run) : cycle) - inCycle).rounded(.up))
             VStack(spacing: 4) {
-                Text(running ? "KOŞU" : "DİNLENME").font(.headline).foregroundStyle(running ? .green : .secondary)
-                Text("\(left)").font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
+                Text(running ? "KOŞU" : "DİNLENME").font(.footnote.bold()).foregroundStyle(running ? .green : .secondary)
+                Text("\(left)").font(.system(size: 32, weight: .bold, design: .rounded)).monospacedDigit()
                 Text("Tekrar \(min(reps, Int(elapsed / cycle) + 1))/\(reps)").font(.footnote).foregroundStyle(.secondary)
                 Button("Bitir") { confirmStop = true }
             }
@@ -300,15 +300,15 @@ private struct SprintDrillView: View {
                 Text("\(name) · baraj \(secondsText(limit))").font(.caption2).foregroundStyle(.secondary)
                 switch phase {
                 case "ready":
-                    Text("HAZIR \(max(1, Int((3 - inPhase).rounded(.up))))").font(.title2.bold())
+                    Text("HAZIR \(max(1, Int((3 - inPhase).rounded(.up))))").font(.title3.bold())
                 case "run":
-                    Text(secondsText(inPhase)).font(.system(size: 40, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(.green)
+                    Text(secondsText(inPhase)).font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(.green)
                     Text("Çizgide ekrana dokun").font(.caption2).foregroundStyle(.secondary)
                 default:
                     if let last = times.last, let time = last {
-                        Text("\(secondsText(time)) sn").font(.title2.bold()).foregroundStyle(time <= limit ? .green : .red)
+                        Text("\(secondsText(time)) sn").font(.title3.bold()).foregroundStyle(time <= limit ? .green : .red)
                     } else {
-                        Text("Durdurulmadı").font(.title3.bold()).foregroundStyle(.red)
+                        Text("Durdurulmadı").font(.headline).foregroundStyle(.red)
                     }
                     let left = max(0, Int((restSeconds - inPhase).rounded(.up)))
                     Text(String(format: "Dinlenme %d:%02d", left / 60, left % 60)).font(.footnote).foregroundStyle(.secondary)

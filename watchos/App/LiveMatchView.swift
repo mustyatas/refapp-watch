@@ -3,6 +3,8 @@ import RefAppWatchCore
 
 struct LiveMatchView: View {
     let model: LiveMatchModel
+    /// Back to the start screen; the match clock keeps running from its timestamps.
+    var onHome: () -> Void = {}
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @State private var selectedTab = 0
     @State private var selectedSection = 0
@@ -85,6 +87,7 @@ struct LiveMatchView: View {
                             }
                         }
                     }
+                    Button("Ana menü") { onHome() }
                     Button("Vazgeç", role: .cancel) {}
                 }
             }
@@ -491,6 +494,7 @@ struct LiveMatchView: View {
                         Button("Orta Noktayı İşaretle") { model.markPitch("center") }
                         Button("Köşe Bayrağını İşaretle") { model.markPitch("corner") }
                         Button(model.tracker.isEnabled ? "Konum Kaydını Kapat" : "Konum Kaydını Aç") { model.toggleTracking() }
+                        Button("Ana menü") { onHome() }
                         Button("Vazgeç", role: .cancel) {}
                     } message: {
                         Text("Isı haritası için önce orta noktada, sonra bir köşe bayrağında durup işaretleyin.")
